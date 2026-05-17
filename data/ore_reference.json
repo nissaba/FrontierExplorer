@@ -1,0 +1,333 @@
+{
+  "source": "EVE Frontier localization_fsd_en-us.pickle (showinfo links) + ecosystem.json site types",
+  "zones": {
+    "hot": {
+      "label": "Hot zone (inner / near star)",
+      "ores": [
+        {
+          "name": "Char",
+          "typeId": 91374,
+          "nameId": 1032111
+        },
+        {
+          "name": "Slag",
+          "typeId": 91375,
+          "nameId": 1032112
+        },
+        {
+          "name": "Ingot",
+          "typeId": 91376,
+          "nameId": 1032113
+        }
+      ]
+    },
+    "cold": {
+      "label": "Cold zone (outer belt)",
+      "ores": [
+        {
+          "name": "Comet",
+          "typeId": 91377,
+          "nameId": 1032114
+        },
+        {
+          "name": "Dewdrop",
+          "typeId": 91378,
+          "nameId": 1032115
+        },
+        {
+          "name": "Soot",
+          "typeId": 91381,
+          "nameId": 1032118,
+          "note": "Client name is Soot (not Sooth)"
+        },
+        {
+          "name": "Ember",
+          "typeId": 91379,
+          "nameId": 1032116
+        },
+        {
+          "name": "Glint",
+          "typeId": 91380,
+          "nameId": 1032117
+        }
+      ]
+    }
+  },
+  "ecosystems": {
+    "2": {
+      "oreZone": "hot",
+      "ring": "inner",
+      "name": "Broken World - Inner Belt - Derelict Quarry",
+      "entryDungeonId": 13717,
+      "patternDungeonIds": [
+        13599,
+        13600,
+        13601,
+        13633,
+        13634,
+        13635,
+        13636,
+        13637,
+        13638,
+        13708
+      ]
+    },
+    "3": {
+      "oreZone": "hot",
+      "ring": "inner",
+      "name": "Broken World - Inner Belt - Derelict Bay",
+      "entryDungeonId": 13716,
+      "patternDungeonIds": [
+        13603,
+        13624,
+        13633,
+        13634,
+        13635,
+        13636,
+        13637,
+        13638,
+        13640,
+        13658
+      ]
+    },
+    "4": {
+      "oreZone": "hot",
+      "ring": "inner",
+      "name": "Natural World - Inner Belt - Stone Cluster",
+      "entryDungeonId": 13718,
+      "patternDungeonIds": [
+        13634,
+        13635,
+        13636,
+        13637,
+        13638,
+        13707
+      ]
+    },
+    "5": {
+      "oreZone": "hot",
+      "ring": "inner",
+      "name": "Natural World - Inner Belt - Ancient Cluster",
+      "entryDungeonId": 13719,
+      "patternDungeonIds": [
+        13634,
+        13635,
+        13636,
+        13639,
+        13704,
+        13705
+      ]
+    },
+    "6": {
+      "oreZone": "hot",
+      "ring": "inner",
+      "name": "Broken World - Inner Asteroid field - Ruins",
+      "entryDungeonId": 13720,
+      "patternDungeonIds": [
+        13612,
+        13617,
+        13618,
+        13619,
+        13626,
+        13632
+      ]
+    },
+    "7": {
+      "oreZone": "mixed",
+      "ring": "outer",
+      "name": "Broken World - Outer Belt - Vestiges",
+      "entryDungeonId": 13930,
+      "patternDungeonIds": [
+        13597,
+        13606,
+        13609,
+        13610,
+        13630,
+        13632,
+        13654,
+        13705,
+        13708,
+        13937,
+        13940
+      ]
+    },
+    "8": {
+      "oreZone": "cold",
+      "ring": "outer",
+      "siteType": "Shale",
+      "name": "Natural World  - Outer Belt - Shale",
+      "entryDungeonId": 13931,
+      "patternDungeonIds": [
+        13702,
+        13705,
+        13937,
+        13939
+      ]
+    },
+    "9": {
+      "oreZone": "cold",
+      "ring": "outer",
+      "siteType": "Grove",
+      "name": "Natural World  - Outer Belt - Grove",
+      "entryDungeonId": 13932,
+      "patternDungeonIds": [
+        13634,
+        13635,
+        13636,
+        13639,
+        13704,
+        13705,
+        13707,
+        13940
+      ]
+    },
+    "10": {
+      "oreZone": "cold",
+      "ring": "outer",
+      "siteType": "Blue Drift",
+      "name": "Broken World - Outer Belt - Blue Drift",
+      "entryDungeonId": 13928,
+      "patternDungeonIds": [
+        13632,
+        13659,
+        13705,
+        13939,
+        13940
+      ]
+    },
+    "11": {
+      "oreZone": "mixed",
+      "ring": "outer",
+      "name": "Broken World - Outer Belt - Abandoned Foundry",
+      "entryDungeonId": 13929,
+      "patternDungeonIds": [
+        13593,
+        13594,
+        13602,
+        13606,
+        13609,
+        13655,
+        13663,
+        13702,
+        13705,
+        13937,
+        13939,
+        13940
+      ]
+    },
+    "12": {
+      "oreZone": "mixed",
+      "ring": "trojan",
+      "haystack": true,
+      "name": "Natural World  - Trojan - Garden",
+      "entryDungeonId": 13941,
+      "patternDungeonIds": [
+        13633,
+        13634,
+        13635,
+        13636,
+        13637,
+        13638,
+        13707,
+        13939
+      ]
+    },
+    "13": {
+      "oreZone": "mixed",
+      "ring": "trojan",
+      "haystack": true,
+      "name": "Broken World - Trojans - Drifting Annex",
+      "entryDungeonId": 13942,
+      "patternDungeonIds": [
+        13565,
+        13618,
+        13619,
+        13629,
+        13632,
+        13634,
+        13635,
+        13636,
+        13637,
+        13638,
+        13656,
+        13659,
+        13660,
+        13705,
+        13707,
+        13868,
+        13939
+      ]
+    },
+    "20": {
+      "oreZone": "transitional",
+      "ring": "transitional",
+      "name": "Transitional Belt - Trade Hub",
+      "entryDungeonId": 14026,
+      "patternDungeonIds": [
+        13634,
+        13635,
+        13636,
+        13637,
+        13638,
+        13639,
+        13660,
+        13702,
+        13704,
+        13705,
+        13937,
+        13939,
+        13940
+      ]
+    },
+    "21": {
+      "oreZone": "transitional",
+      "ring": "transitional",
+      "name": "Transitional Belt - Broken",
+      "entryDungeonId": 14027,
+      "patternDungeonIds": [
+        13600,
+        13618,
+        13619,
+        13629,
+        13632,
+        13634,
+        13635,
+        13636,
+        13637,
+        13638,
+        13639,
+        13656,
+        13659,
+        13660,
+        13702,
+        13704,
+        13705,
+        13868,
+        13937,
+        13939,
+        13940
+      ]
+    },
+    "22": {
+      "oreZone": "transitional",
+      "ring": "transitional",
+      "name": "Transitional - Natural",
+      "entryDungeonId": 14028,
+      "patternDungeonIds": [
+        13633,
+        13634,
+        13635,
+        13636,
+        13637,
+        13638,
+        13639,
+        13702,
+        13707,
+        13937,
+        13939,
+        13940
+      ]
+    }
+  },
+  "dungeonNote": "Each ecosystem also references dungeonID values in ecosystem.json (entry + patterns). Ore spawns per rock are defined inside those dungeon templates in staticdata/dungeons.fsdbinary \u2014 not yet decoded in this explorer."
+}

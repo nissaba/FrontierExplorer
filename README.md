@@ -63,11 +63,9 @@ D1 fuel:
 - Ecosystem `10`: Broken World - Outer Belt - Blue Drift
 
 The database does not contain fuel or ore item spawns directly. It contains site types. The
-thermal golden-zone model would require star luminosity, albedo, sublimation temperature, and
-emissivity, which are not present here. This tool uses the practical evidence available in the
-extracted map data: outer-belt Shale, Grove, and Blue Drift sites. Outer belts are the most
-important D1 scouting area. These are possible D1
-scouting targets, not guaranteed fuel sites. Counts come from extracted data records and may
-not map 1:1 to visible in-game anomalies. Blue Drift is marked as a combat candidate.
+fuel scan model uses outer-belt Shale, Grove, and Blue Drift site types plus a simple
+three-factor heuristic (thermal stress, skin depth, venting). These are scouting signals, not
+guaranteed fuel sites. Counts come from extracted data records and may not map 1:1 to visible
+in-game anomalies. Blue Drift is marked as a combat candidate.
 
 Normal build ores are treated as an inner-ring belt scouting signal, not a direct item spawn.

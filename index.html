@@ -14,9 +14,9 @@
           <h1>System Explorer</h1>
           <p class="lede">
             Type a system name or ID to understand what you are jumping into: site mix,
-            resources, inner-ring belt prospects, outer-belt scouting targets, combat signals,
-            and exploration opportunities. Use filters to search for D1 leads, combat-heavy
-            systems, inner belts, outer belts, or broad exploration candidates.
+            resources, inner-ring and outer-ring belt sites, site types in the extracted data,
+            and exploration opportunities. Use filters to narrow by belt ring, outer-belt site
+            types, or Blue Drift combat markers.
           </p>
         </div>
         <div class="status-card" id="status-card">
@@ -39,16 +39,23 @@
         </span>
       </section>
 
-      <section class="d1-guide" aria-label="D1 fuel interpretation guide">
-        <strong>D1 fuel scouting rule:</strong>
-        <span>
-          The thermal “golden zone” depends on star luminosity, albedo, sublimation temperature,
-          and emissivity, but those values are not present in this database. This tool therefore
-          flags <b>outer belts</b>, especially <b>Shale</b>, <b>Grove</b>, and
-          <b>Blue Drift</b>, as possible D1 scouting targets, not guaranteed fuel sites.
-          Counts come from extracted data records and may not map 1:1 to visible in-game
-          anomalies. Blue Drift is treated as the dangerous/combat variant.
-        </span>
+      <section class="belt-guide ore-guide-banner" aria-label="Data guide">
+        <strong>How to read this explorer</strong>
+        <ul class="guide-list">
+          <li>
+            <b>Inner vs outer belts</b> — inner rings skew hot (Char, Slag, Ingot); outer rings skew cold
+            (Comet, Dewdrop, Soot, Glint, Ember).
+          </li>
+          <li>
+            <b>Site types</b> — Shale, Grove, and Blue Drift mark outer fuel scouting targets in the map data.
+          </li>
+          <li>
+            <b>Trojans</b> — can mix hot and cold rocks even when the map only shows Garden or Annex.
+          </li>
+          <li>
+            <b>Fuel scan</b> — compares Shale vs Grove vs Drift site types; not confirmed in-game odds.
+          </li>
+        </ul>
       </section>
 
       <section class="stats-grid" aria-label="Database stats">
@@ -61,12 +68,12 @@
           <strong id="stat-sites">-</strong>
         </article>
         <article class="stat-card accent">
-          <span>Possible D1 Targets</span>
-          <strong id="stat-comet">-</strong>
+          <span>Inner Belt Sites</span>
+          <strong id="stat-inner-belts">-</strong>
         </article>
-        <article class="stat-card danger">
-          <span>Blue Drift</span>
-          <strong id="stat-combat">-</strong>
+        <article class="stat-card accent">
+          <span>Outer Belt Sites</span>
+          <strong id="stat-outer-belts">-</strong>
         </article>
       </section>
 
@@ -124,12 +131,12 @@
 
             <label class="toggle">
               <input id="comet-only" type="checkbox" />
-              <span>Possible D1 targets</span>
+              <span>Outer belt Shale / Grove / Blue Drift</span>
             </label>
 
             <label class="toggle">
               <input id="combat-only" type="checkbox" />
-              <span>Combat / Blue Drift</span>
+              <span>Combat</span>
             </label>
 
             <label class="toggle">
@@ -144,21 +151,9 @@
           </div>
 
           <div class="hint">
-            Pick a system from the dropdown to anchor the results list. Nearby candidates
-            appear in the main list; filters narrow that list. Click a result to inspect it.
+            Pick a system from the dropdown, then browse nearby systems in the detail panel.
+            Filters apply to that nearby list. Click a system to jump there.
           </div>
-        </section>
-
-        <section class="panel results-panel">
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Results</p>
-              <h2 id="results-title">Nearby Systems</h2>
-            </div>
-            <span class="pill" id="result-count">0 systems</span>
-          </div>
-
-          <div id="results" class="results-list" aria-live="polite"></div>
         </section>
 
         <section class="panel detail-panel">
@@ -171,25 +166,18 @@
           </div>
 
           <div id="detail-empty" class="empty-state">
-            Pick a result to see a human-readable system report with all sites, likely resources,
-            Shale, Grove, and Blue Drift locations, tags, and coordinates.
+            Search for a system above to see nearby candidates, a system report, and site details.
           </div>
 
           <div id="detail-content" class="detail-content" hidden>
             <div class="mini-stats">
               <div><span>Total Sites</span><strong id="detail-sites">-</strong></div>
-              <div><span>Comet-Bearing</span><strong id="detail-comet">-</strong></div>
-              <div><span>Blue Drift</span><strong id="detail-combat">-</strong></div>
+              <div><span>Inner Belts</span><strong id="detail-inner-belts">-</strong></div>
+              <div><span>Outer Belts</span><strong id="detail-outer-belts">-</strong></div>
             </div>
-            <div class="nearby-tools">
-              <label class="field compact">
-                <span>Nearby systems radius (ly)</span>
-                <input id="nearby-radius" type="number" min="1" max="10000" step="1" value="100" />
-              </label>
-              <span class="nearby-help">Shows systems near the selected system using starmap coordinates.</span>
-            </div>
+            <div id="nearby-systems" class="nearby-systems" aria-live="polite"></div>
             <div id="system-report" class="system-report"></div>
-            <div id="nearby-systems" class="nearby-systems"></div>
+            <h3 class="site-list-heading">All sites in this system</h3>
             <div id="site-list" class="site-list"></div>
           </div>
         </section>

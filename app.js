@@ -1,25 +1,34 @@
 const DB_URL = "./data/frontier.sqlite";
+const ORE_REFERENCE_URL = "./data/ore_reference.json";
 const SQL_WASM = "https://cdn.jsdelivr.net/npm/sql.js@latest/dist/";
 const COMET_ECOSYSTEMS = new Set([8, 9, 10]);
 const METERS_PER_LIGHT_YEAR = 9.4607304725808e15;
+
+let oreReference = null;
+
+const LIKELIHOOD_TIER = {
+  LOW: { label: "Low", score: 0.2 },
+  MEDIUM: { label: "Medium", score: 0.5 },
+  HIGH: { label: "High", score: 0.9 },
+};
 const SITE_TAXONOMY = [
   {
     keywords: ["Blue Drift"],
-    category: "Possible D1 Indicator / Outer Belt",
+    category: "Outer Belt Site Type",
     classification: "Dangerous / Combat Resource",
-    activity: "Scan and mine D1-bearing material after dealing with the hostile site variant.",
-    yield: "Possible D1 scouting target; Blue Drift is the dangerous variant.",
+    activity: "Scan and mine after clearing the hostile site variant.",
+    yield: "Outer-belt resource site in extracted data; Blue Drift is the combat-heavy variant.",
     description:
-      "An outer-belt site type associated with D1 fuel scouting. This is not a guarantee of fuel. Treat Blue Drift as the combat-heavy version of the Shale/Grove/Blue Drift family.",
+      "An outer-belt ecosystem type from extracted map data. Treat Blue Drift as the combat-heavy version of the Shale/Grove/Blue Drift family.",
   },
   {
     keywords: ["Shale", "Grove"],
-    category: "Possible D1 Indicator / Outer Belt",
+    category: "Outer Belt Site Type",
     classification: "Industrial / Resource",
-    activity: "Scan and mine D1-bearing material in cold outer-ring environments.",
-    yield: "Possible D1 scouting target.",
+    activity: "Scan and mine in cold outer-ring belt environments.",
+    yield: "Outer-belt resource site in extracted data.",
     description:
-      "Outer-belt site types associated with D1 fuel scouting. These are worth checking, but they are not fuel or ore items directly listed in the map data.",
+      "Outer-belt Shale or Grove site types from extracted map data. Listed for scouting context; not confirmed in-game resources.",
   },
   {
     keywords: ["Drone Nest", "Osa Drone", "Minor Drone"],
@@ -132,7 +141,6 @@ let db;
 let selectedSystemId;
 let originSystemId;
 let originSystemLabel = "";
-let searchTimer;
 let suggestionIndex = -1;
 let allSystemSummaries;
 
@@ -143,8 +151,8 @@ const el = {
   stats: {
     systems: document.querySelector("#stat-systems"),
     sites: document.querySelector("#stat-sites"),
-    comet: document.querySelector("#stat-comet"),
-    combat: document.querySelector("#stat-combat"),
+    innerBelts: document.querySelector("#stat-inner-belts"),
+    outerBelts: document.querySelector("#stat-outer-belts"),
   },
   searchInput: document.querySelector("#search-input"),
   searchSuggestions: document.querySelector("#search-suggestions"),
@@ -155,17 +163,13 @@ const el = {
   innerBeltOnly: document.querySelector("#inner-belt-only"),
   outerBeltOnly: document.querySelector("#outer-belt-only"),
   resetButton: document.querySelector("#reset-button"),
-  resultsTitle: document.querySelector("#results-title"),
-  resultCount: document.querySelector("#result-count"),
-  results: document.querySelector("#results"),
   detailTitle: document.querySelector("#detail-title"),
   detailRegion: document.querySelector("#detail-region"),
   detailEmpty: document.querySelector("#detail-empty"),
   detailContent: document.querySelector("#detail-content"),
   detailSites: document.querySelector("#detail-sites"),
-  detailComet: document.querySelector("#detail-comet"),
-  detailCombat: document.querySelector("#detail-combat"),
-  nearbyRadius: document.querySelector("#nearby-radius"),
+  detailInnerBelts: document.querySelector("#detail-inner-belts"),
+  detailOuterBelts: document.querySelector("#detail-outer-belts"),
   nearbySystems: document.querySelector("#nearby-systems"),
   systemReport: document.querySelector("#system-report"),
   siteList: document.querySelector("#site-list"),
@@ -180,6 +184,15 @@ function setStatus(type, title, detail) {
 
 function formatNumber(value) {
   return Number(value || 0).toLocaleString();
+}
+
+function formatBeltNearbySummary(row) {
+  const inner = Number(row.inner_belt_site_count || 0);
+  const outer = Number(row.outer_belt_site_count || 0);
+  const parts = [];
+  if (inner) parts.push(`${formatNumber(inner)} inner`);
+  if (outer) parts.push(`${formatNumber(outer)} outer`);
+  return parts.length ? parts.join(" · ") : "no belt tags";
 }
 
 function queryRows(sql, params = {}) {
@@ -277,6 +290,178 @@ function sourceTypeName(name) {
   return null;
 }
 
+function outerBeltFuelType(site) {
+  const fromName = sourceTypeName(site.ecosystem_name);
+  if (fromName) return fromName;
+  if (Number(site.ecosystem_id) === 8) return "Shale";
+  if (Number(site.ecosystem_id) === 9) return "Grove";
+  if (Number(site.ecosystem_id) === 10) return "Blue Drift";
+  return null;
+}
+
+function formatPercent(probability) {
+  return `${Math.round(Number(probability || 0) * 100)}%`;
+}
+
+function tierScore(tier) {
+  return LIKELIHOOD_TIER[tier]?.score ?? LIKELIHOOD_TIER.MEDIUM.score;
+}
+
+function formatTier(tier) {
+  const entry = LIKELIHOOD_TIER[tier];
+  if (!entry) return "—";
+  return `${entry.label} (${formatPercent(entry.score)})`;
+}
+
+function inferEnvironmentalFactors(site, type) {
+  const tags = parseTags(site.tags_json).map((tag) => String(tag).toLowerCase());
+  const icy = tags.some((tag) => tag.includes("icy") || tag.includes("ice"));
+
+  let stress = "LOW";
+  let skin = "LOW";
+  let venting = "LOW";
+
+  if (type === "Blue Drift") {
+    stress = "HIGH";
+    skin = "MEDIUM";
+    venting = "HIGH";
+  } else if (type === "Grove") {
+    stress = "HIGH";
+    skin = "MEDIUM";
+    venting = "MEDIUM";
+  } else if (type === "Shale") {
+    stress = "LOW";
+    skin = "HIGH";
+    venting = "LOW";
+  }
+
+  if (icy && venting !== "HIGH") {
+    venting = venting === "LOW" ? "LOW" : "MEDIUM";
+  }
+
+  return { stress, skin, venting };
+}
+
+function computeFuelScan(site) {
+  if (Number(site.is_comet_candidate) !== 1) return null;
+
+  const type = outerBeltFuelType(site);
+  const factors = inferEnvironmentalFactors(site, type);
+  const pStress = tierScore(factors.stress);
+  const pSkin = tierScore(factors.skin);
+  const pVenting = tierScore(factors.venting);
+  const pFuel = Math.round(((pStress + pSkin + pVenting) / 3) * 100) / 100;
+
+  return {
+    type,
+    beltLabel:
+      site.object_type === "asteroidBelts"
+        ? `Belt ${site.object_id}`
+        : `${siteTypeLabel(site.object_type)} ${site.object_id}`,
+    pStress,
+    pSkin,
+    pVenting,
+    stressTier: factors.stress,
+    skinTier: factors.skin,
+    ventingTier: factors.venting,
+    pFuel,
+  };
+}
+
+function renderFuelBeltComparison(fuelSites) {
+  const beltMap = new Map();
+  for (const entry of fuelSites) {
+    const key = `${entry.site.object_type}:${entry.site.object_id}`;
+    if (!beltMap.has(key)) beltMap.set(key, []);
+    beltMap.get(key).push(entry);
+  }
+
+  const multi = [...beltMap.values()].filter((group) => group.length > 1);
+  if (!multi.length) return "";
+
+  const notes = multi
+    .map((group) => {
+      const label = group[0].model.beltLabel;
+      const parts = group
+        .map(
+          ({ site, model }) =>
+            `${model.type || "site"} on ${model.beltLabel}: ${formatPercent(model.pFuel)} (${formatTier(model.stressTier)} stress, ${formatTier(model.ventingTier)} venting)`,
+        )
+        .join(" · ");
+      return `<li><strong>${escapeHtml(label)}</strong> — ${escapeHtml(parts)}</li>`;
+    })
+    .join("");
+
+  return `
+    <div class="fuel-belt-compare">
+      <strong>Same belt, different reads</strong>
+      <p>Multiple outer-type sites can share one belt (e.g. Eimur: Shale + Grove on one outer belt). Compare scan rows — low venting Shale vs higher-stress Grove often matches “thin” vs “richer” comet ore finds.</p>
+      <ul>${notes}</ul>
+    </div>
+  `;
+}
+
+function renderFuelModelSection(sites) {
+  const fuelSites = sites
+    .map((site) => ({ site, model: computeFuelScan(site) }))
+    .filter((entry) => entry.model)
+    .sort((a, b) => b.model.pFuel - a.model.pFuel || a.site.site_id - b.site.site_id);
+
+  if (!fuelSites.length) {
+    return "";
+  }
+
+  const best = fuelSites[0].model;
+  const rows = fuelSites
+    .map(({ site, model }) => {
+      const type = model.type || "Outer type";
+      return `
+        <tr>
+          <td>${escapeHtml(site.ecosystem_name || type)}</td>
+          <td>${escapeHtml(model.beltLabel)}</td>
+          <td>${formatTier(model.stressTier)}</td>
+          <td>${formatTier(model.skinTier)}</td>
+          <td>${formatTier(model.ventingTier)}</td>
+          <td><strong>${formatPercent(model.pFuel)}</strong></td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `
+    <section class="report-card fuel-model-card">
+      <h3>Fuel Scan Model (explorer heuristic)</h3>
+      <p class="fuel-model-lede">
+        Scan % is the average of three factors (Low 0–30%, Medium 31–70%, High 71–100%):
+        thermal stress (grooves), skin depth (flaking shale), and venting (bleu drift trail).
+        <strong>Best model scan here: ${formatPercent(best.pFuel)}.</strong>
+        Based on outer-belt site type in the extract — not confirmed in-game fuel odds.
+      </p>
+      ${renderFuelBeltComparison(fuelSites)}
+      <div class="fuel-model-legend">
+        <span><b>Grooves</b> — Grove/Blue Drift higher; bare Shale lower.</span>
+        <span><b>Skin depth</b> — Shale → high flaking; Grove/Drift → medium.</span>
+        <span><b>Venting</b> — Blue Drift hot trail → high; Shale cold → low.</span>
+      </div>
+      <div class="fuel-table-wrap">
+        <table class="fuel-model-table">
+          <thead>
+            <tr>
+              <th>Site</th>
+              <th>Belt</th>
+              <th>Grooves</th>
+              <th>Flaking</th>
+              <th>Venting</th>
+              <th>Scan %</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
 function taxonomyForName(name) {
   const lowerName = String(name || "").toLowerCase();
   return SITE_TAXONOMY.find((entry) =>
@@ -286,6 +471,200 @@ function taxonomyForName(name) {
 
 function siteTypeLabel(objectType) {
   return objectType === "asteroidBelts" ? "Asteroid Belt" : "Trojan";
+}
+
+async function loadOreReference() {
+  const response = await fetch(ORE_REFERENCE_URL);
+  if (!response.ok) {
+    throw new Error(`Could not load ore reference (${response.status})`);
+  }
+  oreReference = await response.json();
+}
+
+function oreZoneForEcosystem(ecosystemId) {
+  const meta = oreReference?.ecosystems?.[String(ecosystemId)];
+  if (!meta) return null;
+  const zone = oreReference.zones?.[meta.oreZone];
+  return { meta, zone };
+}
+
+function formatOreList(zone) {
+  if (!zone?.ores?.length) return "";
+  return zone.ores.map((ore) => ore.name).join(", ");
+}
+
+function ecosystemMeta(ecosystemId) {
+  return oreReference?.ecosystems?.[String(ecosystemId)] || null;
+}
+
+function oreZoneLabel(oreZone) {
+  if (oreZone === "hot") return "Near the star (hot)";
+  if (oreZone === "cold") return "Far from the star (cold)";
+  if (oreZone === "mixed") return "Mixed temperatures";
+  if (oreZone === "transitional") return "Transitional";
+  return "Unknown zone";
+}
+
+function ringLabel(site, meta) {
+  const tags = parseTags(site.tags_json);
+  if (site.object_type === "trojans" || meta?.ring === "trojan") return "Trojan";
+  if (tags.includes("outer") || meta?.ring === "outer") return "Outer ring";
+  if (tags.includes("inner") || meta?.ring === "inner") return "Inner ring";
+  if (meta?.ring === "transitional") return "Transitional belt";
+  return "";
+}
+
+function shortSiteTypeName(site, meta) {
+  if (meta?.siteType) return meta.siteType;
+  const name = site.ecosystem_name || "";
+  const fromName = sourceTypeName(name);
+  if (fromName) return fromName;
+  const parts = name.split(" - ").map((p) => p.trim()).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : name || "Unknown site";
+}
+
+function renderOreChips(zoneKey, zone) {
+  if (!zone?.ores?.length) return "";
+  const chips = zone.ores
+    .map((ore) => {
+      const note = ore.note ? ` title="${escapeHtml(ore.note)}"` : "";
+      return `<span class="ore-chip ore-chip-${zoneKey}"${note}>${escapeHtml(ore.name)}</span>`;
+    })
+    .join("");
+
+  return `
+    <div class="ore-zone-block ore-zone-${zoneKey}">
+      <h4>${escapeHtml(zone.label)}</h4>
+      <p class="ore-zone-hint">${zoneKey === "hot" ? "Typical when mining close to the star." : "Typical on outer belts and cold hosts."}</p>
+      <div class="ore-chip-row">${chips}</div>
+    </div>
+  `;
+}
+
+function summarizeSystemOreSites(sites) {
+  const byEco = new Map();
+  for (const site of sites) {
+    const key = String(site.ecosystem_id);
+    if (!byEco.has(key)) {
+      byEco.set(key, { site, count: 0 });
+    }
+    byEco.get(key).count += 1;
+  }
+  return [...byEco.values()].sort(
+    (a, b) =>
+      a.site.object_type.localeCompare(b.site.object_type) ||
+      Number(a.site.ecosystem_id) - Number(b.site.ecosystem_id),
+  );
+}
+
+function renderSystemSiteTypeCards(sites) {
+  const cards = summarizeSystemOreSites(sites)
+    .map(({ site, count }) => {
+      const meta = ecosystemMeta(site.ecosystem_id);
+      const info = oreZoneForEcosystem(site.ecosystem_id);
+      const zone = info?.zone;
+      const title = shortSiteTypeName(site, meta);
+      const ring = ringLabel(site, meta);
+      const zoneText = oreZoneLabel(meta?.oreZone);
+      const ores = formatOreList(zone);
+      const place =
+        site.object_type === "asteroidBelts" ? `Belt ${site.object_id}` : `Trojan ${site.object_id}`;
+      const countLabel = `${count} site${count === 1 ? "" : "s"} in this system`;
+
+      return `
+        <article class="site-type-card">
+          <div class="site-type-card-top">
+            <h4>${escapeHtml(title)}</h4>
+            <span class="site-type-count">${escapeHtml(countLabel)}</span>
+          </div>
+          <p class="site-type-meta">${escapeHtml([ring, zoneText, place].filter(Boolean).join(" · "))}</p>
+          ${
+            ores
+              ? `<p class="site-type-ores"><span>Look for</span> ${escapeHtml(ores)}</p>`
+              : `<p class="site-type-ores muted">Rock mix varies — scan in game.</p>`
+          }
+        </article>
+      `;
+    })
+    .join("");
+
+  if (!cards) return "";
+
+  return `<div class="site-type-cards">${cards}</div>`;
+}
+
+function renderOreHaystackNote(sites) {
+  const trojans = sites.filter((s) => s.object_type === "trojans");
+  const comets = sites.filter((s) => Number(s.is_comet_candidate) === 1);
+  if (!trojans.length) return "";
+
+  const outerIcy = trojans.filter((s) => {
+    const tags = parseTags(s.tags_json).map((t) => t.toLowerCase());
+    return tags.includes("outer") && tags.some((t) => t.includes("icy") || t.includes("ice"));
+  });
+
+  if (comets.length && !outerIcy.length) return "";
+
+  return `
+    <div class="ore-haystack-note">
+      <strong>Trojan haystack scouting</strong>
+      <p>
+        ${trojans.length} trojan point${trojans.length === 1 ? "" : "s"} here
+        ${comets.length ? ", plus labeled outer Shale/Grove/Drift sites." : ", but no labeled outer fuel sites on the map."}
+        ${outerIcy.length ? ` ${outerIcy.length} outer trojan${outerIcy.length === 1 ? "" : "s"} sit on icy hosts — good place to scan for cold rocks.` : " Pilots report mixed hot and cold asteroids at trojans even when the map only shows Garden or Annex."}
+      </p>
+    </div>
+  `;
+}
+
+function renderOreZoneNote(site) {
+  const info = oreZoneForEcosystem(site.ecosystem_id);
+  if (!info) return "";
+
+  const { meta, zone } = info;
+  const ores = formatOreList(zone);
+  const zoneLabel = oreZoneLabel(meta.oreZone);
+  const title = shortSiteTypeName(site, meta);
+  const ring = ringLabel(site, meta);
+
+  let body = "";
+  if (ores) {
+    body = `Expect <b>${escapeHtml(ores)}</b> when scanning this ${escapeHtml((ring || "site").toLowerCase())}.`;
+  } else if (meta.haystack) {
+    body = "Hot and cold rock types can mix — scan many asteroids to find comet-style ore.";
+  } else {
+    body = "Rock mix varies; confirm with your scanner in game.";
+  }
+
+  return `<div class="ore-zone-note">
+      <p class="ore-zone-title"><strong>${escapeHtml(zoneLabel)}</strong> · ${escapeHtml(title)}</p>
+      <p class="ore-zone-body">${body}</p>
+    </div>`;
+}
+
+function renderOreGuideSection(sites) {
+  if (!oreReference?.zones) return "";
+
+  return `
+    <section class="report-card ore-guide-card" id="ore-reference">
+      <h3>What rocks to expect</h3>
+      <p class="ore-guide-lede">
+        The map lists <b>site types</b> (Shale, Grove, inner quarries, trojans). Each sits in a
+        hot or cold part of the system. These are the asteroid families pilots usually mine there.
+      </p>
+
+      <div class="ore-ref-grid">
+        ${renderOreChips("hot", oreReference.zones.hot)}
+        ${renderOreChips("cold", oreReference.zones.cold)}
+      </div>
+
+      <h4 class="ore-subheading">Sites in this system</h4>
+      ${renderSystemSiteTypeCards(sites)}
+      ${renderOreHaystackNote(sites)}
+
+      <p class="ore-footnote">The extract lists site types, not every rock in a belt. Always verify with an in-game scan.</p>
+    </section>
+  `;
 }
 
 function makeSystemReport(summary, sites) {
@@ -306,49 +685,51 @@ function makeSystemReport(summary, sites) {
     /icy|ice|temperate|rocky|gas|puffy|plasma|super|outer|inner|host/i.test(tag),
   );
 
-  const cometText = cometSites.length
-    ? `${topCounts(cometSites.map((site) => sourceTypeName(site.ecosystem_name)).filter(Boolean))
-        .map(([name, count]) => `${count} outer ${name}`)
-        .join(", ")} record${cometSites.length === 1 ? "" : "s"} in the extracted data. This may not map 1:1 to visible in-game anomalies; treat it as a scouting signal, not a guaranteed count.`
-    : "No Shale, Grove, or Blue Drift sites found.";
-  const cometTypes = [...new Set(cometSites.map((site) => sourceTypeName(site.ecosystem_name)).filter(Boolean))];
-  const cometTypeText = cometTypes.length
-    ? `Types present: ${cometTypes.join(", ")}.`
-    : "No Shale/Grove/Blue Drift types present.";
+  const outerTypeText = cometSites.length
+    ? topCounts(cometSites.map((site) => sourceTypeName(site.ecosystem_name)).filter(Boolean))
+        .map(([name, count]) => `${count}× ${name}`)
+        .join(", ")
+    : "None in extract";
 
   const combatText = combatSites.length
-    ? `${combatSites.length} Blue Drift combat candidate${combatSites.length === 1 ? "" : "s"} present.`
-    : "No Blue Drift combat site types marked.";
-  const buildOreText = innerBeltSites.length
-    ? `${innerBeltSites.length} inner-ring belt site${innerBeltSites.length === 1 ? "" : "s"} found. These are the likely normal build-ore prospects.`
-    : "No inner-ring belt sites found for normal build-ore scouting.";
-  const outerRingText = outerBeltSites.length
-    ? `${outerBeltSites.length} outer-belt site${outerBeltSites.length === 1 ? "" : "s"} found. Outer belts are the most important D1 scouting area.`
-    : "No outer-belt sites found.";
+    ? `${combatSites.length} Blue Drift site${combatSites.length === 1 ? "" : "s"} marked combat-heavy.`
+    : "No Blue Drift sites in extract.";
+
+  const innerBeltText = innerBeltSites.length
+    ? `${innerBeltSites.length} inner-ring belt site${innerBeltSites.length === 1 ? "" : "s"} tagged in data.`
+    : "No inner-ring belt tags in extract.";
+
+  const outerBeltText = outerBeltSites.length
+    ? `${outerBeltSites.length} outer-ring belt site${outerBeltSites.length === 1 ? "" : "s"} tagged in data.`
+    : "No outer-ring belt tags in extract.";
 
   const livingNote =
-    cometSites.length && !combatSites.length
-      ? "Looks worth scouting for D1: outer-belt Shale/Grove targets without Blue Drift markers."
-      : cometSites.length && combatSites.length
-        ? "Worth scouting for D1, but more dangerous: outer-belt targets include Blue Drift."
-        : trojanSites.length >= 2 && asteroidSites.length >= 3
-          ? "Good exploration variety, but no Shale/Grove/Blue Drift signal in this dataset."
-          : "Sparse resource signal from this dataset; scout before committing.";
+    innerBeltSites.length && outerBeltSites.length
+      ? `Both inner (${innerBeltSites.length}) and outer (${outerBeltSites.length}) belt sites appear in the extract.`
+      : innerBeltSites.length
+        ? `Inner-ring belts only (${innerBeltSites.length} tagged sites) — typical build-ore style prospects.`
+        : outerBeltSites.length
+          ? `Outer-ring belts only (${outerBeltSites.length} tagged sites)${cometSites.length ? `; types: ${outerTypeText}` : ""}.`
+          : trojanSites.length >= 2 && asteroidSites.length >= 3
+            ? "Belts and trojans present, but no inner/outer ring tags in this extract."
+            : "Sparse belt tagging in this extract; verify in game before committing.";
 
   return `
     <section class="report-card">
       <h3>At A Glance</h3>
       <p>${escapeHtml(livingNote)}</p>
       <div class="report-grid">
-        <div><span>Belts</span><strong>${formatNumber(asteroidSites.length)}</strong></div>
+        <div><span>Asteroid Belts</span><strong>${formatNumber(asteroidSites.length)}</strong></div>
         <div><span>Trojans</span><strong>${formatNumber(trojanSites.length)}</strong></div>
-        <div><span>Build Ore Read</span><strong>${escapeHtml(buildOreText)}</strong></div>
-        <div><span>D1 Data Records</span><strong>${escapeHtml(cometText)}</strong></div>
-        <div><span>D1 Types Present</span><strong>${escapeHtml(cometTypeText)}</strong></div>
-        <div><span>Outer Ring Read</span><strong>${escapeHtml(outerRingText)}</strong></div>
-        <div><span>Risk Read</span><strong>${escapeHtml(combatText)}</strong></div>
+        <div><span>Inner Belts</span><strong>${escapeHtml(innerBeltText)}</strong></div>
+        <div><span>Outer Belts</span><strong>${escapeHtml(outerBeltText)}</strong></div>
+        <div><span>Outer Types in Data</span><strong>${escapeHtml(outerTypeText)}</strong></div>
+        <div><span>Blue Drift</span><strong>${escapeHtml(combatText)}</strong></div>
       </div>
     </section>
+
+    ${renderFuelModelSection(sites)}
+    ${renderOreGuideSection(sites)}
 
     <section class="report-card">
       <h3>Site Mix</h3>
@@ -403,14 +784,14 @@ function loadStats() {
     SELECT
       (SELECT COUNT(*) FROM systems) AS systems,
       (SELECT COUNT(*) FROM sites) AS sites,
-      (SELECT COUNT(*) FROM comet_sites) AS comet,
-      (SELECT COUNT(*) FROM sites WHERE is_combat_candidate = 1) AS combat
+      (SELECT COALESCE(SUM(inner_belt_site_count), 0) FROM system_site_summary) AS inner_belts,
+      (SELECT COALESCE(SUM(outer_belt_site_count), 0) FROM system_site_summary) AS outer_belts
   `);
 
   el.stats.systems.textContent = formatNumber(stats.systems);
   el.stats.sites.textContent = formatNumber(stats.sites);
-  el.stats.comet.textContent = formatNumber(stats.comet);
-  el.stats.combat.textContent = formatNumber(stats.combat);
+  el.stats.innerBelts.textContent = formatNumber(stats.inner_belts);
+  el.stats.outerBelts.textContent = formatNumber(stats.outer_belts);
 }
 
 function loadRegions() {
@@ -515,14 +896,30 @@ function highlightSuggestion(index) {
 }
 
 function chooseOriginSystem(systemId) {
-  const system = getAllSystemSummaries().find((row) => Number(row.system_id) === Number(systemId));
-  if (!system) return;
+  setActiveSystem(systemId);
+}
 
-  originSystemId = Number(system.system_id);
-  originSystemLabel = String(system.system_name || system.system_id);
+function setActiveSystem(systemId) {
+  const summary = queryOne(
+    `
+      SELECT
+        sys.system_id,
+        sys.system_name,
+        sys.region
+      FROM systems sys
+      JOIN system_site_summary summary ON summary.system_id = sys.system_id
+      WHERE sys.system_id = $systemId
+    `,
+    { $systemId: systemId },
+  );
+  if (!summary) return;
+
+  originSystemId = Number(summary.system_id);
+  selectedSystemId = originSystemId;
+  originSystemLabel = String(summary.system_name || summary.system_id);
   el.searchInput.value = originSystemLabel;
   hideSearchSuggestions();
-  selectSystem(originSystemId);
+  renderSystemDetail(originSystemId);
 }
 
 function clearOriginSystem() {
@@ -566,80 +963,24 @@ function getRadiusFilteredRows() {
     .sort(
       (a, b) =>
         a.distance_ly - b.distance_ly ||
-        Number(b.comet_site_count) - Number(a.comet_site_count) ||
+        Number(b.outer_belt_site_count) - Number(a.outer_belt_site_count) ||
+        Number(b.inner_belt_site_count) - Number(a.inner_belt_site_count) ||
         String(a.system_name).localeCompare(String(b.system_name)),
     )
     .slice(0, 120);
 }
 
-function renderResults() {
-  if (!db) return;
-
-  if (!originSystemId) {
-    el.resultsTitle.textContent = "Nearby Systems";
-    el.resultCount.textContent = "—";
-    el.results.innerHTML =
-      '<div class="empty-state">Search for a system above and pick it from the dropdown to see nearby candidates.</div>';
-    return;
-  }
-
-  const origin = getSelectedOrigin();
-  const radius = getCandidateRadiusLy();
-  const rows = getRadiusFilteredRows() ?? [];
-
-  el.resultsTitle.textContent = `Within ${formatNumber(radius)} ly of ${origin?.system_name || originSystemId}`;
-  el.resultCount.textContent = `${formatNumber(rows.length)} systems`;
-
-  if (!origin) {
-    el.results.innerHTML = '<div class="empty-state">Could not load the searched system.</div>';
-    return;
-  }
-
-  if (!origin.center_x && Number(origin.center_x) !== 0) {
-    el.results.innerHTML = `<div class="empty-state">No starmap coordinates are available for ${escapeHtml(origin.system_name)}. Nearby candidates cannot be calculated.</div>`;
-    return;
-  }
-
-  if (!rows.length) {
-    el.results.innerHTML = `<div class="empty-state">No systems matched those filters within ${formatNumber(radius)} ly.</div>`;
-    return;
-  }
-
-  el.results.innerHTML = rows.map(renderResultCard).join("");
-  el.results.querySelectorAll("[data-system-id]").forEach((button) => {
-    button.addEventListener("click", () => selectSystem(Number(button.dataset.systemId)));
-  });
+function refreshActiveSystem() {
+  if (originSystemId) renderSystemDetail(originSystemId);
 }
 
-function renderResultCard(row) {
-  const active = Number(row.system_id) === selectedSystemId ? " active" : "";
-  const combatText = row.combat_site_count ? `, ${row.combat_site_count} Blue Drift` : "";
-  const distanceText =
-    typeof row.distance_ly === "number" ? ` · ${row.distance_ly.toFixed(2)} ly away` : "";
-
+function renderNearbyRow(row) {
   return `
-    <button class="result-card${active}" type="button" data-system-id="${row.system_id}">
-      <div>
-        <div class="result-title">
-          <strong>${escapeHtml(row.system_name || row.system_id)}</strong>
-          <span>${row.system_id}</span>
-        </div>
-        <div class="result-meta">
-          ${escapeHtml(row.region || "Unknown region")} · ${formatNumber(row.site_count)} sites · ${formatNumber(row.comet_site_count)} outer-belt D1 leads${combatText}${distanceText}
-        </div>
-      </div>
-      <div class="comet-count">
-        <strong>${formatNumber(row.comet_site_count)}</strong>
-        <span>D1 indicators</span>
-      </div>
+    <button class="nearby-row" type="button" data-system-id="${row.system_id}">
+      <strong>${escapeHtml(row.system_name || row.system_id)}</strong>
+      <span>${row.distance_ly.toFixed(1)} ly · ${formatBeltNearbySummary(row)}</span>
     </button>
   `;
-}
-
-function selectSystem(systemId) {
-  selectedSystemId = systemId;
-  renderResults();
-  renderSystemDetail(systemId);
 }
 
 function renderSystemDetail(systemId) {
@@ -683,7 +1024,7 @@ function renderSystemDetail(systemId) {
       FROM sites s
       LEFT JOIN ecosystems e ON e.ecosystem_id = s.ecosystem_id
       WHERE s.system_id = $systemId
-      ORDER BY s.is_comet_candidate DESC, s.object_type, s.object_id, s.site_id
+      ORDER BY s.object_type, s.object_id, s.site_id
     `,
     { $systemId: systemId },
   );
@@ -691,8 +1032,8 @@ function renderSystemDetail(systemId) {
   el.detailTitle.textContent = `${summary.system_name || summary.system_id}`;
   el.detailRegion.textContent = `${summary.region || "Unknown region"} · ${summary.system_id}`;
   el.detailSites.textContent = formatNumber(summary.site_count);
-  el.detailComet.textContent = formatNumber(summary.comet_site_count);
-  el.detailCombat.textContent = formatNumber(summary.combat_site_count);
+  el.detailInnerBelts.textContent = formatNumber(summary.inner_belt_site_count);
+  el.detailOuterBelts.textContent = formatNumber(summary.outer_belt_site_count);
   el.detailEmpty.hidden = true;
   el.detailContent.hidden = false;
   el.systemReport.innerHTML = makeSystemReport(summary, sites);
@@ -708,51 +1049,36 @@ function distanceLy(a, b) {
 }
 
 function renderNearbySystems(origin) {
+  const radius = getCandidateRadiusLy();
+
   if (!origin.center_x && Number(origin.center_x) !== 0) {
     el.nearbySystems.innerHTML = `
-      <section class="report-card">
+      <section class="report-card nearby-card">
         <h3>Nearby Systems</h3>
-        <p>No starmap coordinates are available for this system.</p>
+        <p class="nearby-note">No starmap coordinates are available for this system.</p>
       </section>
     `;
     return;
   }
 
-  const radius = Math.max(1, Number(el.nearbyRadius.value || 100));
-  const nearby = getAllSystemSummaries()
-    .filter((system) => Number(system.system_id) !== Number(origin.system_id))
-    .map((system) => ({ ...system, distance_ly: distanceLy(origin, system) }))
-    .filter((system) => system.distance_ly <= radius)
-    .sort((a, b) => a.distance_ly - b.distance_ly || a.system_name.localeCompare(b.system_name))
-    .slice(0, 60);
-
-  const rows = nearby.length
-    ? nearby
-        .map(
-          (system) => `
-            <button class="nearby-row" type="button" data-system-id="${system.system_id}">
-              <span>
-                <strong>${escapeHtml(system.system_name)}</strong>
-                <small>${system.system_id} · ${escapeHtml(system.region || "Unknown region")}</small>
-              </span>
-              <span>${system.distance_ly.toFixed(1)} ly</span>
-              <span>${formatNumber(system.comet_site_count)} D1 leads</span>
-            </button>
-          `,
-        )
-        .join("")
-    : `<div class="empty-state compact">No systems found within ${formatNumber(radius)} ly.</div>`;
+  const rows = getRadiusFilteredRows() ?? [];
+  const list = rows.length
+    ? rows.map(renderNearbyRow).join("")
+    : `<div class="empty-state compact">No systems matched those filters within ${formatNumber(radius)} ly.</div>`;
 
   el.nearbySystems.innerHTML = `
-    <section class="report-card">
-      <h3>Nearby Systems Within ${formatNumber(radius)} ly</h3>
-      <p>Distances are calculated from starmap system-center coordinates. Use this as a planning aid, not route safety advice.</p>
-      <div class="nearby-list">${rows}</div>
+    <section class="report-card nearby-card">
+      <div class="nearby-heading">
+        <h3>Nearby within ${formatNumber(radius)} ly</h3>
+        <span class="pill muted">${formatNumber(rows.length)} systems</span>
+      </div>
+      <p class="nearby-note">Distances use starmap coordinates. Click a system to jump there.</p>
+      <div class="nearby-list">${list}</div>
     </section>
   `;
 
   el.nearbySystems.querySelectorAll("[data-system-id]").forEach((button) => {
-    button.addEventListener("click", () => selectSystem(Number(button.dataset.systemId)));
+    button.addEventListener("click", () => setActiveSystem(Number(button.dataset.systemId)));
   });
 }
 
@@ -761,25 +1087,42 @@ function renderSiteCard(site) {
   const isComet = Number(site.is_comet_candidate) === 1;
   const isCombat = Number(site.is_combat_candidate) === 1;
   const type = siteTypeLabel(site.object_type);
-  const ecosystemName = site.ecosystem_name || `Ecosystem ${site.ecosystem_id}`;
+  const meta = ecosystemMeta(site.ecosystem_id);
+  const ecosystemName = site.ecosystem_name || shortSiteTypeName(site, meta);
   const family = ecosystemFamily(ecosystemName);
   const taxonomy = taxonomyForName(ecosystemName);
+  const outerType = sourceTypeName(ecosystemName);
+  const ringTags = parseTags(site.tags_json);
   const badges = [
-    isComet ? `<span class="badge comet">Possible D1 target</span>` : "",
-    isComet ? `<span class="badge comet">Outer belt D1 lead</span>` : "",
-    isCombat ? `<span class="badge combat">Blue Drift / combat</span>` : "",
+    ringTags.includes("inner") && site.object_type === "asteroidBelts"
+      ? `<span class="badge">Inner belt</span>`
+      : "",
+    ringTags.includes("outer") && site.object_type === "asteroidBelts"
+      ? `<span class="badge">Outer belt</span>`
+      : "",
+    isCombat
+      ? `<span class="badge combat">Blue Drift</span>`
+      : isComet && outerType
+        ? `<span class="badge outer-type">${escapeHtml(outerType)}</span>`
+        : "",
     `<span class="badge">${escapeHtml(family)}</span>`,
-    tags.includes("inner") && site.object_type === "asteroidBelts"
-      ? `<span class="badge">Inner ring build-ore prospect</span>`
-      : "",
-    tags.includes("outer") && site.object_type === "asteroidBelts"
-      ? `<span class="badge">Outer ring</span>`
-      : "",
-    COMET_ECOSYSTEMS.has(Number(site.ecosystem_id))
-      ? `<span class="badge comet">Shale / Grove / Blue Drift</span>`
-      : "",
-    ...tags.map((tag) => `<span class="badge">${escapeHtml(humanizeTag(tag))}</span>`),
+    ...tags
+      .filter((tag) => tag !== "inner" && tag !== "outer")
+      .map((tag) => `<span class="badge">${escapeHtml(humanizeTag(tag))}</span>`),
   ].join("");
+  const fuelModel = computeFuelScan(site);
+  const fuelNote = fuelModel
+    ? `<div class="fuel-scan-note">
+        <strong>Model scan: ${formatPercent(fuelModel.pFuel)}</strong>
+        <span>
+          grooves ${formatTier(fuelModel.stressTier)} ·
+          flaking ${formatTier(fuelModel.skinTier)} ·
+          venting ${formatTier(fuelModel.ventingTier)}
+        </span>
+        <small>${escapeHtml(fuelModel.beltLabel)} — heuristic from site type in extract.</small>
+      </div>`
+    : "";
+
   const taxonomyNote = taxonomy
     ? `<div class="taxonomy-note">
         <strong>${escapeHtml(taxonomy.category)}</strong>
@@ -795,14 +1138,20 @@ function renderSiteCard(site) {
         <div>
           <div class="site-name">${escapeHtml(ecosystemName)}</div>
           <div class="site-meta">
-            ${type} ${site.object_id} · Site ${site.site_id} · Ecosystem ${site.ecosystem_id}
+            ${escapeHtml(
+              [
+                site.object_type === "asteroidBelts" ? `Belt ${site.object_id}` : `Trojan ${site.object_id}`,
+                ringLabel(site, meta),
+              ]
+                .filter(Boolean)
+                .join(" · "),
+            )}
           </div>
         </div>
       </div>
-      <div class="coords">
-        x ${Number(site.x).toLocaleString()} · y ${Number(site.y).toLocaleString()} · z ${Number(site.z).toLocaleString()}
-      </div>
       <div class="badges">${badges}</div>
+      ${renderOreZoneNote(site)}
+      ${fuelNote}
       ${taxonomyNote}
     </article>
   `;
@@ -827,8 +1176,6 @@ function onSearchInput() {
   }
 
   renderSearchSuggestions();
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(renderResults, 120);
 }
 
 function bindEvents() {
@@ -870,37 +1217,12 @@ function bindEvents() {
     if (el.searchInput.value.trim()) renderSearchSuggestions();
   });
 
-  el.regionSelect.addEventListener("change", renderResults);
-  el.candidateRadius.addEventListener("input", renderResults);
-  el.cometOnly.addEventListener("change", renderResults);
-  el.combatOnly.addEventListener("change", renderResults);
-  el.innerBeltOnly.addEventListener("change", renderResults);
-  el.outerBeltOnly.addEventListener("change", renderResults);
-  el.nearbyRadius.addEventListener("input", () => {
-    if (selectedSystemId) {
-      const summary = queryOne(
-        `
-          SELECT
-            sys.system_id,
-            sys.system_name,
-            sys.region,
-            sys.center_x,
-            sys.center_y,
-            sys.center_z,
-            summary.site_count,
-            summary.comet_site_count,
-            summary.combat_site_count,
-            summary.inner_belt_site_count,
-            summary.outer_belt_site_count
-          FROM systems sys
-          JOIN system_site_summary summary ON summary.system_id = sys.system_id
-          WHERE sys.system_id = $systemId
-        `,
-        { $systemId: selectedSystemId },
-      );
-      if (summary) renderNearbySystems(summary);
-    }
-  });
+  el.regionSelect.addEventListener("change", refreshActiveSystem);
+  el.candidateRadius.addEventListener("input", refreshActiveSystem);
+  el.cometOnly.addEventListener("change", refreshActiveSystem);
+  el.combatOnly.addEventListener("change", refreshActiveSystem);
+  el.innerBeltOnly.addEventListener("change", refreshActiveSystem);
+  el.outerBeltOnly.addEventListener("change", refreshActiveSystem);
 
   el.resetButton.addEventListener("click", () => {
     el.searchInput.value = "";
@@ -913,22 +1235,22 @@ function bindEvents() {
     el.combatOnly.checked = false;
     el.innerBeltOnly.checked = false;
     el.outerBeltOnly.checked = false;
-    renderResults();
   });
 }
 
 async function boot() {
   try {
     bindEvents();
-    await loadDatabase();
+    await Promise.all([loadDatabase(), loadOreReference()]);
     loadStats();
     loadRegions();
-    renderResults();
     setStatus("ready", "Database ready", "Search for a system, pick it from the dropdown, then browse nearby candidates.");
   } catch (error) {
     console.error(error);
     setStatus("error", "Could not load database", error.message);
-    el.results.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+    el.detailEmpty.hidden = false;
+    el.detailContent.hidden = true;
+    el.detailEmpty.textContent = error.message;
   }
 }
 
