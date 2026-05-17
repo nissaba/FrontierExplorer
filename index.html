@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EVE Frontier System Explorer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">EVE Frontier</p>
+          <h1>System Explorer</h1>
+          <p class="lede">
+            Type a system name or ID to understand what you are jumping into: site mix,
+            resources, inner-ring belt prospects, outer-belt scouting targets, combat signals,
+            and exploration opportunities. Use filters to search for D1 leads, combat-heavy
+            systems, inner belts, outer belts, or broad exploration candidates.
+          </p>
+        </div>
+        <div class="status-card" id="status-card">
+          <span class="status-dot"></span>
+          <div>
+            <strong id="status-title">Loading database</strong>
+            <p id="status-detail">Fetching frontier.sqlite...</p>
+          </div>
+        </div>
+      </header>
+
+      <section class="disclaimer" aria-label="Unofficial site disclaimer">
+        <strong>Unofficial fan tool.</strong>
+        <span>
+          Use at your own risk. I am not responsible if you lose ships, die, or make bad routing,
+          mining, combat, or settlement decisions from this information. The data is extracted and
+          interpreted from game files, community knowledge, and online documentation, and may be
+          incomplete, outdated, or wrong. This website is not official, and CCP Games / Fenris
+          Creations have not endorsed, reviewed, approved, or participated in it.
+        </span>
+      </section>
+
+      <section class="d1-guide" aria-label="D1 fuel interpretation guide">
+        <strong>D1 fuel scouting rule:</strong>
+        <span>
+          The thermal “golden zone” depends on star luminosity, albedo, sublimation temperature,
+          and emissivity, but those values are not present in this database. This tool therefore
+          flags <b>outer belts</b>, especially <b>Shale</b>, <b>Grove</b>, and
+          <b>Blue Drift</b>, as possible D1 scouting targets, not guaranteed fuel sites.
+          Counts come from extracted data records and may not map 1:1 to visible in-game
+          anomalies. Blue Drift is treated as the dangerous/combat variant.
+        </span>
+      </section>
+
+      <section class="stats-grid" aria-label="Database stats">
+        <article class="stat-card">
+          <span>Systems</span>
+          <strong id="stat-systems">-</strong>
+        </article>
+        <article class="stat-card">
+          <span>Sites</span>
+          <strong id="stat-sites">-</strong>
+        </article>
+        <article class="stat-card accent">
+          <span>Possible D1 Targets</span>
+          <strong id="stat-comet">-</strong>
+        </article>
+        <article class="stat-card danger">
+          <span>Blue Drift</span>
+          <strong id="stat-combat">-</strong>
+        </article>
+      </section>
+
+      <main class="content-grid">
+        <section class="panel search-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Search</p>
+              <h2>Look Up A System</h2>
+            </div>
+            <button class="ghost-button" id="reset-button" type="button">Reset</button>
+          </div>
+
+          <label class="field search-field">
+            <span>System of interest (name or ID)</span>
+            <div class="search-combobox">
+              <input
+                id="search-input"
+                type="search"
+                autocomplete="off"
+                placeholder="Try Eimur, I86-PCK, 30010445..."
+                role="combobox"
+                aria-expanded="false"
+                aria-controls="search-suggestions"
+                aria-autocomplete="list"
+              />
+              <div
+                id="search-suggestions"
+                class="search-suggestions"
+                role="listbox"
+                hidden
+              ></div>
+            </div>
+          </label>
+
+          <div class="filter-row">
+            <label class="field compact">
+              <span>Region</span>
+              <select id="region-select">
+                <option value="">All regions</option>
+              </select>
+            </label>
+
+            <label class="field compact">
+              <span>Candidate radius from searched system (ly)</span>
+              <input
+                id="candidate-radius"
+                type="number"
+                min="1"
+                max="10000"
+                step="1"
+                placeholder="100"
+              />
+            </label>
+
+            <label class="toggle">
+              <input id="comet-only" type="checkbox" />
+              <span>Possible D1 targets</span>
+            </label>
+
+            <label class="toggle">
+              <input id="combat-only" type="checkbox" />
+              <span>Combat / Blue Drift</span>
+            </label>
+
+            <label class="toggle">
+              <input id="inner-belt-only" type="checkbox" />
+              <span>Inner belt prospects</span>
+            </label>
+
+            <label class="toggle">
+              <input id="outer-belt-only" type="checkbox" />
+              <span>Outer belt prospects</span>
+            </label>
+          </div>
+
+          <div class="hint">
+            Pick a system from the dropdown to anchor the results list. Nearby candidates
+            appear in the main list; filters narrow that list. Click a result to inspect it.
+          </div>
+        </section>
+
+        <section class="panel results-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Results</p>
+              <h2 id="results-title">Nearby Systems</h2>
+            </div>
+            <span class="pill" id="result-count">0 systems</span>
+          </div>
+
+          <div id="results" class="results-list" aria-live="polite"></div>
+        </section>
+
+        <section class="panel detail-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">System Detail</p>
+              <h2 id="detail-title">Select a system</h2>
+            </div>
+            <span class="pill muted" id="detail-region">No region</span>
+          </div>
+
+          <div id="detail-empty" class="empty-state">
+            Pick a result to see a human-readable system report with all sites, likely resources,
+            Shale, Grove, and Blue Drift locations, tags, and coordinates.
+          </div>
+
+          <div id="detail-content" class="detail-content" hidden>
+            <div class="mini-stats">
+              <div><span>Total Sites</span><strong id="detail-sites">-</strong></div>
+              <div><span>Comet-Bearing</span><strong id="detail-comet">-</strong></div>
+              <div><span>Blue Drift</span><strong id="detail-combat">-</strong></div>
+            </div>
+            <div class="nearby-tools">
+              <label class="field compact">
+                <span>Nearby systems radius (ly)</span>
+                <input id="nearby-radius" type="number" min="1" max="10000" step="1" value="100" />
+              </label>
+              <span class="nearby-help">Shows systems near the selected system using starmap coordinates.</span>
+            </div>
+            <div id="system-report" class="system-report"></div>
+            <div id="nearby-systems" class="nearby-systems"></div>
+            <div id="site-list" class="site-list"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/sql.js@latest/dist/sql-wasm.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
