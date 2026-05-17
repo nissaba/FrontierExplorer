@@ -1,6 +1,7 @@
 const DB_URL = "./data/frontier.sqlite";
 const ORE_REFERENCE_URL = "./data/ore_reference.json";
-const SQL_WASM = "https://cdn.jsdelivr.net/npm/sql.js@latest/dist/";
+const SQL_WASM = "https://cdn.jsdelivr.net/npm/sql.js@1.12.0/dist/";
+const MAX_CANDIDATE_RADIUS_LY = 10000;
 const COMET_ECOSYSTEMS = new Set([8, 9, 10]);
 const METERS_PER_LIGHT_YEAR = 9.4607304725808e15;
 
@@ -244,6 +245,16 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replaceAll("`", "&#096;");
+}
+
+function normalizeSystemId(systemId) {
+  const id = Number(systemId);
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+  return id;
 }
 
 function parseTags(tagsJson) {
@@ -867,11 +878,11 @@ function renderSearchSuggestions() {
           class="suggestion-item"
           type="button"
           role="option"
-          data-system-id="${row.system_id}"
+          data-system-id="${escapeAttr(row.system_id)}"
           data-index="${index}"
         >
           <strong>${escapeHtml(row.system_name || row.system_id)}</strong>
-          <span>${row.system_id} · ${escapeHtml(row.region || "Unknown region")}</span>
+          <span>${escapeHtml(row.system_id)} · ${escapeHtml(row.region || "Unknown region")}</span>
         </button>
       `,
     )
@@ -896,10 +907,14 @@ function highlightSuggestion(index) {
 }
 
 function chooseOriginSystem(systemId) {
-  setActiveSystem(systemId);
+  const id = normalizeSystemId(systemId);
+  if (id) setActiveSystem(id);
 }
 
 function setActiveSystem(systemId) {
+  const id = normalizeSystemId(systemId);
+  if (!id) return;
+
   const summary = queryOne(
     `
       SELECT
@@ -910,11 +925,13 @@ function setActiveSystem(systemId) {
       JOIN system_site_summary summary ON summary.system_id = sys.system_id
       WHERE sys.system_id = $systemId
     `,
-    { $systemId: systemId },
+    { $systemId: id },
   );
   if (!summary) return;
 
-  originSystemId = Number(summary.system_id);
+  originSystemId = normalizeSystemId(summary.system_id);
+  if (!originSystemId) return;
+
   selectedSystemId = originSystemId;
   originSystemLabel = String(summary.system_name || summary.system_id);
   el.searchInput.value = originSystemLabel;
@@ -933,7 +950,9 @@ function getSelectedOrigin() {
 }
 
 function getCandidateRadiusLy() {
-  return Math.max(1, Number(el.candidateRadius.value) || 100);
+  const raw = Number(el.candidateRadius.value);
+  const radius = Number.isFinite(raw) ? raw : 100;
+  return Math.min(MAX_CANDIDATE_RADIUS_LY, Math.max(1, Math.floor(radius)));
 }
 
 function getRadiusFilteredRows() {
@@ -976,7 +995,7 @@ function refreshActiveSystem() {
 
 function renderNearbyRow(row) {
   return `
-    <button class="nearby-row" type="button" data-system-id="${row.system_id}">
+    <button class="nearby-row" type="button" data-system-id="${escapeAttr(row.system_id)}">
       <strong>${escapeHtml(row.system_name || row.system_id)}</strong>
       <span>${row.distance_ly.toFixed(1)} ly · ${formatBeltNearbySummary(row)}</span>
     </button>
@@ -984,6 +1003,9 @@ function renderNearbyRow(row) {
 }
 
 function renderSystemDetail(systemId) {
+  const id = normalizeSystemId(systemId);
+  if (!id) return;
+
   const summary = queryOne(
     `
       SELECT
@@ -1002,7 +1024,7 @@ function renderSystemDetail(systemId) {
       JOIN system_site_summary summary ON summary.system_id = sys.system_id
       WHERE sys.system_id = $systemId
     `,
-    { $systemId: systemId },
+    { $systemId: id },
   );
 
   if (!summary) return;
@@ -1026,7 +1048,7 @@ function renderSystemDetail(systemId) {
       WHERE s.system_id = $systemId
       ORDER BY s.object_type, s.object_id, s.site_id
     `,
-    { $systemId: systemId },
+    { $systemId: id },
   );
 
   el.detailTitle.textContent = `${summary.system_name || summary.system_id}`;

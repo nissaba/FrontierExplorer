@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>EVE Frontier System Explorer</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -184,7 +185,11 @@
       </main>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/sql.js@latest/dist/sql-wasm.js"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/sql.js@1.12.0/dist/sql-wasm.js"
+      integrity="sha384-1fHJox8K973mCCD3PTAOc0ljrAGXD2VeK8zf+vNIdx55pWPULNlpxKMkU8bF4nUd"
+      crossorigin="anonymous"
+    ></script>
     <script src="./app.js"></script>
   </body>
 </html>

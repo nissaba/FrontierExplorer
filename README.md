@@ -34,24 +34,43 @@ http://localhost:8080
 
 Do not open `index.html` directly with `file://`; browsers block fetching the SQLite database that way.
 
-## Deploy For Free
+## Live site (without touching your existing GitHub Pages)
 
-This folder is static and can be hosted on:
+Your personal GitHub Pages site (e.g. `nissaba.github.io` from another repo) stays as-is.
+Host **this** project on Netlify or Cloudflare Pages with a **separate URL**, linked to this repo
+so every `git push` on `main` redeploys automatically.
 
-- GitHub Pages
-- Cloudflare Pages
-- Netlify
+### Recommended: Netlify + GitHub
 
-Upload/deploy the whole `web/` folder, including:
+1. Sign in at [netlify.com](https://www.netlify.com) with GitHub
+2. **Add new site → Import an existing project** → choose `nissaba/FrontierExplorer`
+3. Settings (should match `netlify.toml`):
+   - **Branch:** `main`
+   - **Build command:** (leave empty)
+   - **Publish directory:** `.` (repo root)
+4. Deploy — you get a URL like `https://frontier-explorer.netlify.app`
+5. Optional: **Domain management** → custom subdomain (e.g. `frontier.yourdomain.com`)
 
-```text
-index.html
-styles.css
-app.js
-data/frontier.sqlite
+After that, only push to Git:
+
+```bash
+git push origin main
 ```
 
-The page loads `sql.js` from jsDelivr and fetches `data/frontier.sqlite` as a read-only browser database.
+Netlify rebuilds in ~1 minute. No change to your main GitHub Pages site.
+
+### Alternative: Cloudflare Pages
+
+1. [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages** → **Create**
+2. Connect GitHub → `FrontierExplorer`
+3. **Build:** none · **Output directory:** `/` (root)
+4. Separate URL on `*.pages.dev` (database is ~35 MB; Netlify is simpler if Cloudflare complains about file size)
+
+### Do not enable GitHub Pages on this repo
+
+If you turn on Pages here, you only get `github.io/FrontierExplorer/` (a sub-path), which is
+**not** the same as replacing `github.io` — but if you already use Pages elsewhere, use Netlify
+to avoid confusion.
 
 ## Possible D1 Scouting Rule
 
