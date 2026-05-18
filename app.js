@@ -1,13 +1,18 @@
 const DB_URL = "./data/frontier.sqlite";
 const ORE_REFERENCE_URL = "./data/ore_reference.json";
 const ECOSYSTEMS_CURATED_URL = "./data/ecosystems_curated.json";
+const PLANET_TYPES_URL = "./data/planet_types.json";
 const SQL_WASM = "https://cdn.jsdelivr.net/npm/sql.js@1.12.0/dist/";
 const MAX_CANDIDATE_RADIUS_LY = 10000;
+const DEFAULT_RADIUS_LY = 100;
 const COMET_ECOSYSTEMS = new Set([8, 9, 10]);
 const METERS_PER_LIGHT_YEAR = 9.4607304725808e15;
+const LIGHT_SECOND_METERS = 299792458;
+const HEAT_INDEX_K = 100;
 
 let oreReference = null;
 let ecosystemsCurated = null;
+let planetTypesRef = null;
 
 const LIKELIHOOD_TIER = {
   LOW: { label: "Low", score: 0.2 },
@@ -31,7 +36,7 @@ const SITE_TAXONOMY = [
     activity: "Mine and salvage in the long chill of the outer ring.",
     yield: "Named outer-belt prospects in the extract — not a guarantee of what your hold will contain.",
     description:
-      "Shale and Grove mark cold-ring fuel scouting on the map. Whether the rocks cooperate is between you and your laser.",
+      "Shale and Grove mark cold-ring water and ice scouting on the map. Whether the rocks cooperate is between you and your laser.",
   },
   {
     keywords: ["Drone Nest", "Osa Drone", "Minor Drone"],
@@ -137,6 +142,9 @@ let originSystemId;
 let originSystemLabel = "";
 let suggestionIndex = -1;
 let allSystemSummaries;
+/** @type {Map<number, { max: number, avg: number, count: number }> | null} */
+let systemFuelProspectById = null;
+let suppressSearchClear = false;
 
 const el = {
   statusCard: document.querySelector("#status-card"),
@@ -308,6 +316,30 @@ function formatPercent(probability) {
   return `${Math.round(Number(probability || 0) * 100)}%`;
 }
 
+const WATER_ICE_SCOUT_TOOLTIP =
+  "Qualitative water/ice scouting read from outer Shale, Grove, and Drift site names on the map — not a guarantee in your hold.";
+
+/** Map heuristic water-ice scout score (0–1) to No / Low / Medium / High. */
+function fuelChanceFromScore(pFuel) {
+  const score = Number(pFuel);
+  if (!Number.isFinite(score) || score <= 0) {
+    return { id: "none", label: "No" };
+  }
+  if (score < 0.4) return { id: "low", label: "Low" };
+  if (score < 0.7) return { id: "medium", label: "Medium" };
+  return { id: "high", label: "High" };
+}
+
+function formatWaterIceBadge(chance) {
+  const tier = chance?.id === "none" || !chance ? "No" : chance.label;
+  const tierId = chance?.id === "none" || !chance ? "none" : chance.id;
+  return `<span class="nearby-fuel nearby-fuel--${escapeAttr(tierId)}" title="${escapeAttr(WATER_ICE_SCOUT_TOOLTIP)}">Water Ice: ${escapeHtml(tier)} chance</span>`;
+}
+
+function formatFuelChanceBadge(chance) {
+  return formatWaterIceBadge(chance);
+}
+
 function tierScore(tier) {
   return LIKELIHOOD_TIER[tier]?.score ?? LIKELIHOOD_TIER.MEDIUM.score;
 }
@@ -347,6 +379,54 @@ function inferEnvironmentalFactors(site, type) {
   return { stress, skin, venting };
 }
 
+function buildSystemFuelProspectIndex() {
+  const rows = queryRows(`
+    SELECT
+      system_id,
+      ecosystem_id,
+      object_type,
+      object_id,
+      tags_json,
+      is_comet_candidate
+    FROM sites
+    WHERE is_comet_candidate = 1
+  `);
+
+  const map = new Map();
+  for (const site of rows) {
+    const model = computeFuelScan(site);
+    if (!model) continue;
+
+    const systemId = Number(site.system_id);
+    const entry = map.get(systemId) || { max: 0, sum: 0, count: 0 };
+    entry.max = Math.max(entry.max, model.pFuel);
+    entry.sum += model.pFuel;
+    entry.count += 1;
+    map.set(systemId, entry);
+  }
+
+  for (const entry of map.values()) {
+    entry.avg = entry.count ? Math.round((entry.sum / entry.count) * 100) / 100 : 0;
+  }
+
+  systemFuelProspectById = map;
+}
+
+function getSystemFuelProspect(systemId) {
+  if (!systemFuelProspectById) return null;
+  return systemFuelProspectById.get(Number(systemId)) || null;
+}
+
+function formatNearbyFuelProspect(row) {
+  const prospect = getSystemFuelProspect(row.system_id);
+  if (!prospect?.count) {
+    return formatFuelChanceBadge(
+      Number(row.comet_site_count) > 0 ? { id: "low", label: "Low" } : { id: "none", label: "No" },
+    );
+  }
+  return formatFuelChanceBadge(fuelChanceFromScore(prospect.max));
+}
+
 function computeFuelScan(site) {
   if (Number(site.is_comet_candidate) !== 1) return null;
 
@@ -359,10 +439,7 @@ function computeFuelScan(site) {
 
   return {
     type,
-    beltLabel:
-      site.object_type === "asteroidBelts"
-        ? `Belt ${site.object_id}`
-        : `${siteTypeLabel(site.object_type)} ${site.object_id}`,
+    beltLabel: landscapeSiteRole(site),
     pStress,
     pSkin,
     pVenting,
@@ -435,7 +512,7 @@ function renderFuelModelSection(sites) {
 
   return `
     <section class="report-card fuel-model-card">
-      <h3>Fuel prospect folklore (heuristic)</h3>
+      <h3>Water Ice scouting folklore (heuristic)</h3>
       <p class="fuel-model-lede">
         Prospect % averages three invented omens — grooves (thermal stress), flaking (skin depth), and venting (Drift trails) — each rated Low, Medium, or High.
         <strong>Best reading in this system: ${formatPercent(best.pFuel)}.</strong>
@@ -653,7 +730,7 @@ function renderOreHaystackNote(sites) {
       <strong>Trojan haystacks (bar-stool chapter)</strong>
       <p>
         ${trojans.length} trojan point${trojans.length === 1 ? "" : "s"} in this system
-        ${comets.length ? ", plus Shale, Grove, or Drift names on the map." : ", though the map declines to name outer fuel sites."}
+        ${comets.length ? ", plus Shale, Grove, or Drift names on the map." : ", though the map declines to name outer Water Ice scout sites."}
         ${outerIcy.length ? ` ${outerIcy.length} outer trojan${outerIcy.length === 1 ? "" : "s"} wear icy hosts — cold ore is the gossip there.` : ""}
         <em>${rumor}</em>
       </p>
@@ -721,6 +798,616 @@ function updateSiteListNotes(sites) {
   el.siteListNotes.hidden = false;
 }
 
+/** EVE-style planet types (PI / EF-Map naming). Inferred from landscape host tags. */
+const EVE_PLANET_TYPE_ORDER = ["Ice", "Temperate", "Barren", "Lava", "Plasma", "Gas", "Storm", "Ocean", "Shattered"];
+
+function filterPlanetTags(tags, side = null) {
+  return tags.filter((tag) => {
+    if (["belt", "trojan", "inner", "outer", "non_zero_danger_level"].includes(tag)) return false;
+    if (side === "inner" && tag.includes("outer") && !tag.includes("inner")) return false;
+    if (side === "outer" && tag.includes("inner") && !tag.includes("outer")) return false;
+    if (side === "inner" && !tag.includes("inner") && !tag.endsWith("_host")) return false;
+    if (side === "outer" && !tag.includes("outer") && !tag.endsWith("_host")) return false;
+    return true;
+  });
+}
+
+function inferEvePlanetType(tagsJson, side = null) {
+  const tags = filterPlanetTags(parseTags(tagsJson), side);
+  const text = tags.join(" ").toLowerCase();
+
+  if (/ice_super|ice_giant|icy|_icy/.test(text)) return "Ice";
+  if (/\blava/.test(text)) return "Lava";
+  if (/plasma/.test(text)) return "Plasma";
+  if (/temperate/.test(text)) return "Temperate";
+  if (/rocky/.test(text)) return "Barren";
+  if (/ocean/.test(text)) return "Ocean";
+  if (/gas_giant|gas_super|puffy/.test(text)) return "Gas";
+  if (/storm|super_host/.test(text)) return "Storm";
+  if (/shattered/.test(text)) return "Shattered";
+  return "Unknown";
+}
+
+function formatEvePlanetLabel(type) {
+  if (!type || type === "Unknown") return null;
+  if (type === "Ice" || type === "Gas") return `${type} planet`;
+  return type;
+}
+
+function starmapPlanetMap(systemId) {
+  const map = new Map();
+  for (const planet of getSystemPlanets(systemId)) {
+    map.set(Number(planet.planet_item_id), planet);
+  }
+  return map;
+}
+
+function hasReliableStarData(star) {
+  return star?.star_temp_source === "sde_mapstars";
+}
+
+function formatPlanetAnchorNote(planetItemId, planetsById) {
+  const id = Number(planetItemId);
+  if (!id) return "No planet anchor — free-floating on the map";
+
+  const planet = planetsById.get(id);
+  if (planet) {
+    const label = planetLabelFromTypeName(planet.planet_type_name);
+    return `Orbits ${label}`;
+  }
+
+  return "Landscape anchor only (no starmap planet)";
+}
+
+function siteSummaryForObject(sites, objectType, objectId) {
+  const matching = sites.filter(
+    (site) => site.object_type === objectType && Number(site.object_id) === Number(objectId),
+  );
+  if (!matching.length) return "No named sites in extract";
+
+  return topCounts(
+    matching
+      .map((site) => {
+        const name = displayEcosystemName(site) || sourceTypeName(site.ecosystem_name) || siteTypeLabel(site.object_type);
+        if (Number(site.is_combat_candidate) === 1) return `${name} (Blue Drift)`;
+        return name;
+      })
+      .filter(Boolean),
+    5,
+  )
+    .map(([name, count]) => `${count}× ${name}`)
+    .join(", ");
+}
+
+function getSystemMoons(systemId) {
+  const id = normalizeSystemId(systemId);
+  if (!id) return [];
+
+  return queryRows(
+    `
+      SELECT
+        moon_item_id,
+        parent_planet_id,
+        type_id,
+        orbit_index,
+        sort_order
+      FROM system_moons
+      WHERE system_id = $systemId
+      ORDER BY parent_planet_id, sort_order, moon_item_id
+    `,
+    { $systemId: id },
+  );
+}
+
+function moonsByPlanetId(moons) {
+  const map = new Map();
+  for (const moon of moons) {
+    const parentId = Number(moon.parent_planet_id);
+    if (!map.has(parentId)) map.set(parentId, []);
+    map.get(parentId).push(moon);
+  }
+  return map;
+}
+
+function getSystemLagrangePoints(systemId) {
+  const id = normalizeSystemId(systemId);
+  if (!id) return { byPlanetId: new Map(), unassigned: [] };
+
+  const rows = queryRows(
+    `
+      SELECT
+        lagrange_item_id,
+        parent_planet_id,
+        type_id,
+        orbit_au,
+        sort_order
+      FROM system_lagrange_points
+      WHERE system_id = $systemId
+      ORDER BY parent_planet_id, sort_order, lagrange_item_id
+    `,
+    { $systemId: id },
+  );
+
+  const byPlanetId = new Map();
+  const unassigned = [];
+  for (const row of rows) {
+    const parentId = row.parent_planet_id;
+    if (parentId == null || parentId === "") {
+      unassigned.push(row);
+      continue;
+    }
+    const planetId = Number(parentId);
+    if (!byPlanetId.has(planetId)) byPlanetId.set(planetId, []);
+    byPlanetId.get(planetId).push(row);
+  }
+  return { byPlanetId, unassigned };
+}
+
+function formatLagrangeLabel(point) {
+  const typeHint = point.type_id ? ` · game type ${point.type_id}` : "";
+  return `Lagrange · #${formatNumber(point.lagrange_item_id)}${typeHint}`;
+}
+
+function landscapeSiteRole(obj) {
+  const tags = parseTags(obj.tags_json);
+  const ring = tags.includes("inner") ? "Inner" : tags.includes("outer") ? "Outer" : "";
+  if (obj.object_type === "asteroidBelts") {
+    return ring ? `${ring} asteroid belt` : "Asteroid belt";
+  }
+  if (obj.object_type === "trojans") {
+    return ring ? `${ring} trojan` : "Trojan";
+  }
+  return humanizeTag(obj.object_type);
+}
+
+function buildLandscapeSiteRow(obj, sites, planetsById) {
+  const starmapIds = new Set(planetsById.keys());
+  const hostIds = [obj.inner_planet_id, obj.outer_planet_id, obj.planet_id]
+    .filter((value) => value != null && value !== "")
+    .map((value) => Number(value));
+  const uniqueHostIds = [...new Set(hostIds)];
+  const starmapHostIds = uniqueHostIds.filter((id) => starmapIds.has(id));
+  const nonStarmapHostIds = uniqueHostIds.filter((id) => !starmapIds.has(id));
+  const anchorNotes =
+    uniqueHostIds.length > 0
+      ? uniqueHostIds.map((hostId) => formatPlanetAnchorNote(hostId, planetsById))
+      : ["No planet anchor — free-floating on the map"];
+
+  return {
+    objectLabel: landscapeObjectLabel(obj.object_type, obj.object_id),
+    role: landscapeSiteRole(obj),
+    siteSummary: siteSummaryForObject(sites, obj.object_type, obj.object_id),
+    starmapHostIds,
+    nonStarmapHostIds,
+    anchorNotes,
+    isOther: starmapHostIds.length === 0,
+  };
+}
+
+function groupLandscapeSitesByPlanet(landscapeObjects, sites, planetsById) {
+  const byPlanetId = new Map();
+  const other = [];
+
+  for (const planetId of planetsById.keys()) {
+    byPlanetId.set(planetId, []);
+  }
+
+  for (const obj of landscapeObjects) {
+    const row = buildLandscapeSiteRow(obj, sites, planetsById);
+    if (row.isOther) {
+      other.push(row);
+      continue;
+    }
+    for (const planetId of row.starmapHostIds) {
+      if (!byPlanetId.has(planetId)) byPlanetId.set(planetId, []);
+      byPlanetId.get(planetId).push(row);
+    }
+  }
+
+  return { byPlanetId, other };
+}
+
+function formatMoonLabel(moon, fallbackIndex) {
+  const orbitIndex = Number(moon.orbit_index);
+  const indexLabel = Number.isFinite(orbitIndex) && orbitIndex > 0 ? orbitIndex : fallbackIndex + 1;
+  const typeHint = moon.type_id ? ` · game type ${moon.type_id}` : "";
+  return `Moon ${indexLabel} · #${formatNumber(moon.moon_item_id)}${typeHint}`;
+}
+
+function renderLandscapeSiteItem(row) {
+  return `
+    <li class="orbit-child-item">
+      <strong>${escapeHtml(row.role)}</strong>
+      <span class="planet-roles">Sites: ${escapeHtml(row.siteSummary)}</span>
+    </li>
+  `;
+}
+
+function renderPlanetDetailsBlock(planet, planetIndex, children, star) {
+  const typeName = planet.planet_type_name;
+  const label = planetLabelFromTypeName(typeName);
+  const orbitMeta = renderPlanetOrbitMeta(planet, planetIndex, star);
+  const { sites = [] } = children;
+
+  const siteHtml = sites.map((row) => renderLandscapeSiteItem(row)).join("");
+
+  const childGroups = [];
+  if (siteHtml) {
+    childGroups.push(`
+      <div class="orbit-child-group">
+        <h5 class="orbit-child-heading">Belts &amp; trojans on this orbit</h5>
+        <ul class="orbit-child-list">${siteHtml}</ul>
+      </div>
+    `);
+  }
+
+  const hasChildren = childGroups.length > 0;
+  const childCountBits = [];
+  if (sites.length) childCountBits.push(`${sites.length} map site${sites.length === 1 ? "" : "s"}`);
+  const childCountText = childCountBits.length ? ` · ${childCountBits.join(", ")}` : "";
+
+  return `
+    <li class="planet-summary-item planet-summary-item--detailed">
+      <details class="planet-details"${hasChildren ? "" : " open"}>
+        <summary class="planet-details-summary">
+          <strong class="planet-type-label ${planetTypeClass(typeName)}">${escapeHtml(label)}</strong>
+          ${childCountText ? `<span class="planet-details-count">${escapeHtml(childCountText)}</span>` : ""}
+        </summary>
+        <div class="planet-details-body">
+          ${orbitMeta}
+          ${childGroups.join("")}
+        </div>
+      </details>
+    </li>
+  `;
+}
+
+function renderOtherOrbitalBodiesSection(otherRows) {
+  if (!otherRows.length) return "";
+
+  const list = otherRows
+    .map(
+      (row) => `
+        <li class="orbit-child-item orbit-child-item--other">
+          <strong>${escapeHtml(row.role)}</strong>
+          <span class="planet-roles">Sites: ${escapeHtml(row.siteSummary)}</span>
+        </li>
+      `,
+    )
+    .join("");
+
+  return `
+    <h4 class="planet-subheading">Other orbital bodies</h4>
+    <p class="planet-lede compact">Belts and trojans with no starmap planet host.</p>
+    <ul class="planet-summary-list orbit-other-list">${list}</ul>
+  `;
+}
+
+function planetLabelFromTypeName(typeName) {
+  if (!typeName) return "Unknown";
+  const types = planetTypesRef?.types || {};
+  const entry = Object.values(types).find((row) => row.key === typeName);
+  return entry?.label || formatEvePlanetLabel(typeName);
+}
+
+async function loadPlanetTypes() {
+  const response = await fetch(PLANET_TYPES_URL);
+  if (!response.ok) {
+    throw new Error(`Could not load ${PLANET_TYPES_URL}`);
+  }
+  planetTypesRef = await response.json();
+}
+
+function getSystemStar(systemId) {
+  const id = normalizeSystemId(systemId);
+  if (!id) return null;
+
+  return queryOne(
+    `
+      SELECT
+        star_temp_k,
+        star_spectral,
+        star_luminosity_solar,
+        star_temp_source
+      FROM systems
+      WHERE system_id = $systemId
+    `,
+    { $systemId: id },
+  );
+}
+
+function getSystemPlanets(systemId) {
+  const id = normalizeSystemId(systemId);
+  if (!id) return [];
+
+  return queryRows(
+    `
+      SELECT
+        planet_item_id,
+        planet_type_enum,
+        planet_type_name,
+        orbit_m,
+        orbit_au,
+        external_temp
+      FROM system_planets
+      WHERE system_id = $systemId
+      ORDER BY sort_order, planet_item_id
+    `,
+    { $systemId: id },
+  );
+}
+
+function formatStarTemperatureK(tempK) {
+  const value = Number(tempK);
+  if (!Number.isFinite(value)) return null;
+  const rounded = Math.round(value / 10) * 10;
+  return rounded.toLocaleString("en-US").replace(/,/g, " ");
+}
+
+function formatOrbitAu(orbitAu) {
+  const value = Number(orbitAu);
+  if (!Number.isFinite(value)) return null;
+  if (value < 10) return value.toFixed(2);
+  if (value < 100) return value.toFixed(1);
+  return value.toFixed(0);
+}
+
+function formatExternalTemp(externalTemp) {
+  const value = Number(externalTemp);
+  if (!Number.isFinite(value)) return null;
+  return value.toFixed(1);
+}
+
+function externalHeatIndex(distanceM, luminositySolar) {
+  const distance = Number(distanceM);
+  const luminosity = Number(luminositySolar);
+  if (!Number.isFinite(distance) || distance <= 0) return null;
+  if (!Number.isFinite(luminosity) || luminosity <= 0) return null;
+  const distanceLightSeconds = distance / LIGHT_SECOND_METERS;
+  if (distanceLightSeconds <= 0) return null;
+  const angle = HEAT_INDEX_K * 2 * Math.PI * Math.sqrt(luminosity) / distanceLightSeconds;
+  return (100 * (2 / Math.PI)) * Math.atan(angle);
+}
+
+function renderStarSummary(star) {
+  if (!hasReliableStarData(star) || star.star_temp_k == null) return "";
+
+  const spectral = star.star_spectral ? `${star.star_spectral} Star` : "Star";
+  const tempLabel = formatStarTemperatureK(star.star_temp_k);
+  const tempText = tempLabel ? ` (${tempLabel} K)` : "";
+
+  return `
+    <div class="system-star-meta">
+      <span class="system-star-label">${escapeHtml(spectral)}${escapeHtml(tempText)}</span>
+    </div>
+  `;
+}
+
+function renderPlanetOrbitMeta(planet, planetIndex, star = null) {
+  const orbitAu = formatOrbitAu(planet.orbit_au);
+  const heatValue =
+    planet.external_temp ??
+    (planet.orbit_m && star?.star_luminosity_solar
+      ? externalHeatIndex(planet.orbit_m, star.star_luminosity_solar)
+      : null);
+  const externalTemp = formatExternalTemp(heatValue);
+  const parts = [];
+
+  if (orbitAu) {
+    parts.push(`<span class="planet-orbit-meta">Planet ${planetIndex} orbit: ${escapeHtml(orbitAu)} AU</span>`);
+  }
+  if (externalTemp && hasReliableStarData(star)) {
+    parts.push(`<span class="planet-temp-meta">External Temp: ${escapeHtml(externalTemp)}</span>`);
+  }
+  if (!parts.length) return "";
+
+  return `<div class="planet-orbit-block">${parts.join("")}</div>`;
+}
+
+function planetTypeClass(type) {
+  return `planet-type--${String(type).toLowerCase()}`;
+}
+
+function getLandscapeObjectsForSystem(systemId) {
+  const id = normalizeSystemId(systemId);
+  if (!id) return [];
+
+  return queryRows(
+    `
+      SELECT
+        object_type,
+        object_id,
+        inner_planet_id,
+        outer_planet_id,
+        planet_id,
+        inner_radius,
+        outer_radius,
+        tags_json,
+        is_ice_tagged
+      FROM landscape_objects
+      WHERE system_id = $systemId
+      ORDER BY object_type, object_id
+    `,
+    { $systemId: id },
+  );
+}
+
+function landscapeObjectLabel(objectType, objectId) {
+  if (objectType === "asteroidBelts") return `Belt ${objectId}`;
+  if (objectType === "trojans") return `Trojan ${objectId}`;
+  return `${humanizeTag(objectType)} ${objectId}`;
+}
+
+function planetHostLabelFromTags(tagsJson, side = null) {
+  return formatEvePlanetLabel(inferEvePlanetType(tagsJson, side)) || "Landscape host tags (not a planet)";
+}
+
+function buildPlanetHostRows(landscapeObjects) {
+  const rows = [];
+
+  for (const obj of landscapeObjects) {
+    const ringTags = parseTags(obj.tags_json);
+    const ring = ringTags.includes("inner") ? "Inner" : ringTags.includes("outer") ? "Outer" : "";
+    const objectLabel = landscapeObjectLabel(obj.object_type, obj.object_id);
+    const iceTagged = Number(obj.is_ice_tagged) === 1;
+
+    if (obj.object_type === "asteroidBelts") {
+      if (obj.inner_planet_id) {
+        rows.push({
+          objectLabel,
+          role: ring ? `${ring} belt · inner host` : "Belt · inner host",
+          planetId: Number(obj.inner_planet_id),
+          planetType: inferEvePlanetType(obj.tags_json, "inner"),
+          hostType: planetHostLabelFromTags(obj.tags_json, "inner"),
+          ice: iceTagged,
+        });
+      }
+      if (obj.outer_planet_id) {
+        rows.push({
+          objectLabel,
+          role: ring ? `${ring} belt · outer host` : "Belt · outer host",
+          planetId: Number(obj.outer_planet_id),
+          planetType: inferEvePlanetType(obj.tags_json, "outer"),
+          hostType: planetHostLabelFromTags(obj.tags_json, "outer"),
+          ice: iceTagged,
+        });
+      }
+      continue;
+    }
+
+    if (obj.object_type === "trojans" && obj.planet_id) {
+      const side = ringTags.includes("inner") ? "inner" : ringTags.includes("outer") ? "outer" : null;
+      rows.push({
+        objectLabel,
+        role: ring ? `${ring} trojan host` : "Trojan host",
+        planetId: Number(obj.planet_id),
+        planetType: inferEvePlanetType(obj.tags_json, side),
+        hostType: planetHostLabelFromTags(obj.tags_json, side),
+        ice: iceTagged,
+      });
+    }
+  }
+
+  return rows;
+}
+
+function summarizeUniquePlanets(hostRows) {
+  const byId = new Map();
+
+  for (const row of hostRows) {
+    const entry = byId.get(row.planetId) || {
+      planetId: row.planetId,
+      planetTypes: new Set(),
+      roles: new Set(),
+      ice: false,
+    };
+    entry.planetTypes.add(row.planetType);
+    entry.roles.add(row.role);
+    entry.ice = entry.ice || row.ice || row.planetType === "Ice";
+    byId.set(row.planetId, entry);
+  }
+
+  return [...byId.values()].sort((a, b) => a.planetId - b.planetId);
+}
+
+function renderSystemPlanetsSection(systemId, sites = []) {
+  const planets = getSystemPlanets(systemId);
+  const star = getSystemStar(systemId);
+  const planetsById = starmapPlanetMap(systemId);
+  const landscape = getLandscapeObjectsForSystem(systemId);
+  const { byPlanetId, other: otherOrbital } = groupLandscapeSitesByPlanet(landscape, sites, planetsById);
+
+  if (!planets.length) {
+    if (!landscape.length) {
+      return `
+        <section class="report-card planet-card">
+          <h3>Planets</h3>
+          <p class="planet-lede">No planet records for this system in the extract.</p>
+        </section>
+      `;
+    }
+
+    const hostRows = buildPlanetHostRows(landscape);
+    const uniquePlanets = summarizeUniquePlanets(hostRows);
+    const typeCounts = countBy(hostRows.map((row) => row.planetType).filter((type) => type !== "Unknown"));
+    const typeChips = EVE_PLANET_TYPE_ORDER.filter((type) => typeCounts[type])
+      .map((type) => {
+        const label = planetLabelFromTypeName(type);
+        return `<span class="chip ${planetTypeClass(type)}">${escapeHtml(label)} ×${typeCounts[type]}</span>`;
+      })
+      .join("");
+
+    const uniqueList = uniquePlanets
+      .map((planet) => {
+        const primaryType = [...planet.planetTypes].sort(
+          (a, b) => EVE_PLANET_TYPE_ORDER.indexOf(a) - EVE_PLANET_TYPE_ORDER.indexOf(b),
+        )[0];
+        const label = planetLabelFromTypeName(primaryType);
+        return `
+          <li class="planet-summary-item">
+            <strong class="planet-type-label ${planetTypeClass(primaryType)}">${escapeHtml(label)}</strong>
+            <span class="planet-roles">${escapeHtml([...planet.roles].join(" · "))}</span>
+          </li>
+        `;
+      })
+      .join("");
+
+    return `
+      <section class="report-card planet-card">
+        <h3>Planets &amp; map sites</h3>
+        <p class="planet-lede">Starmap planets missing from this database build — belts and trojans below. Rebuild frontier.sqlite to restore planet types.</p>
+        ${typeChips ? `<div class="chips">${typeChips}</div>` : ""}
+        <ul class="planet-summary-list anchor-list">${uniqueList}</ul>
+        ${renderOtherOrbitalBodiesSection(otherOrbital)}
+      </section>
+    `;
+  }
+
+  const typeCounts = countBy(planets.map((planet) => planet.planet_type_name));
+  const planetTypeLines = EVE_PLANET_TYPE_ORDER.filter((type) => typeCounts[type])
+    .concat(
+      Object.keys(typeCounts).filter(
+        (type) => !EVE_PLANET_TYPE_ORDER.includes(type) && type !== "Unknown",
+      ),
+    )
+    .map((type) => {
+      const label = planetLabelFromTypeName(type);
+      return `<li class="planet-type-count ${planetTypeClass(type)}">${formatNumber(typeCounts[type])} ${escapeHtml(label)}</li>`;
+    })
+    .join("");
+
+  const planetList = planets
+    .map((planet, index) => {
+      const planetId = Number(planet.planet_item_id);
+      return renderPlanetDetailsBlock(
+        planet,
+        index + 1,
+        {
+          sites: byPlanetId.get(planetId) || [],
+        },
+        star,
+      );
+    })
+    .join("");
+
+  return `
+    <section class="report-card planet-card">
+      <h3>Planets &amp; map sites</h3>
+      ${renderStarSummary(star)}
+      <div class="planet-map-summary">
+        <p class="planet-count-line">${formatNumber(planets.length)} planet${planets.length === 1 ? "" : "s"}</p>
+        ${planetTypeLines ? `<ul class="planet-type-count-list">${planetTypeLines}</ul>` : ""}
+      </div>
+      <p class="planet-lede">
+        Expand a planet for belts and trojans on its orbit. Unanchored bodies are under <b>Other orbital bodies</b>.
+      </p>
+      <ul class="planet-summary-list">${planetList}</ul>
+      ${renderOtherOrbitalBodiesSection(otherOrbital)}
+    </section>
+  `;
+}
+
+
 function makeSystemReport(summary, sites) {
   const cometSites = sites.filter((site) => Number(site.is_comet_candidate) === 1);
   const combatSites = sites.filter((site) => Number(site.is_combat_candidate) === 1);
@@ -746,7 +1433,7 @@ function makeSystemReport(summary, sites) {
     : "The extract names none";
 
   const combatText = combatSites.length
-    ? `${combatSites.length} Blue Drift marker${combatSites.length === 1 ? "" : "s"} — the disagreeable cousin of fuel scouting.`
+    ? `${combatSites.length} Blue Drift marker${combatSites.length === 1 ? "" : "s"} — the disagreeable cousin of Water Ice scouting.`
     : "No Blue Drift in the files — possibly peaceful, possibly undocumented.";
 
   const innerBeltText = innerBeltSites.length
@@ -781,6 +1468,8 @@ function makeSystemReport(summary, sites) {
         <div><span>Blue Drift</span><strong>${escapeHtml(combatText)}</strong></div>
       </div>
     </section>
+
+    ${renderSystemPlanetsSection(summary.system_id, sites)}
 
     ${renderFuelModelSection(sites)}
 
@@ -873,11 +1562,21 @@ function matchScore(row, text) {
   return 3;
 }
 
+function systemMatchesSearchFilters(row, filters = getSearchFilterState()) {
+  if (filters.region && row.region !== filters.region) return false;
+  if (filters.cometOnly && Number(row.comet_site_count) <= 0) return false;
+  if (filters.combatOnly && Number(row.combat_site_count) <= 0) return false;
+  if (filters.innerBeltOnly && Number(row.inner_belt_site_count) <= 0) return false;
+  if (filters.outerBeltOnly && Number(row.outer_belt_site_count) <= 0) return false;
+  return true;
+}
+
 function findSearchMatches(query, limit = 12) {
   const text = query.trim().toLowerCase();
   if (!text) return [];
 
   return getAllSystemSummaries()
+    .filter((row) => systemMatchesSearchFilters(row))
     .filter(
       (row) =>
         String(row.system_id).includes(text) ||
@@ -976,9 +1675,14 @@ function setActiveSystem(systemId) {
 
   selectedSystemId = originSystemId;
   originSystemLabel = String(summary.system_name || summary.system_id);
+  suppressSearchClear = true;
   el.searchInput.value = originSystemLabel;
   hideSearchSuggestions();
+  ensureRadiusInputValue();
   renderSystemDetail(originSystemId);
+  queueMicrotask(() => {
+    suppressSearchClear = false;
+  });
 }
 
 function clearOriginSystem() {
@@ -991,39 +1695,91 @@ function getSelectedOrigin() {
   return getAllSystemSummaries().find((system) => Number(system.system_id) === Number(originSystemId));
 }
 
-function getCandidateRadiusLy() {
-  const raw = Number(el.candidateRadius.value);
-  const radius = Number.isFinite(raw) ? raw : 100;
-  return Math.min(MAX_CANDIDATE_RADIUS_LY, Math.max(1, Math.floor(radius)));
+function readRadiusFromInput() {
+  const raw = String(el.candidateRadius?.value ?? "").trim();
+  if (!raw) return DEFAULT_RADIUS_LY;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return DEFAULT_RADIUS_LY;
+  return Math.min(MAX_CANDIDATE_RADIUS_LY, Math.max(1, Math.floor(parsed)));
 }
 
-function getRadiusFilteredRows() {
-  const origin = getSelectedOrigin();
+/** Commit default radius into the input so placeholder-only “100” still applies. */
+function ensureRadiusInputValue() {
+  if (!el.candidateRadius) return DEFAULT_RADIUS_LY;
+  const ly = readRadiusFromInput();
+  el.candidateRadius.value = String(ly);
+  return ly;
+}
+
+function getCandidateRadiusLy() {
+  return readRadiusFromInput();
+}
+
+function getSearchFilterState() {
+  return {
+    region: el.regionSelect.value,
+    radiusLy: getCandidateRadiusLy(),
+    cometOnly: el.cometOnly.checked,
+    combatOnly: el.combatOnly.checked,
+    innerBeltOnly: el.innerBeltOnly.checked,
+    outerBeltOnly: el.outerBeltOnly.checked,
+  };
+}
+
+function hasActiveSearchFilters(filters = getSearchFilterState()) {
+  return Boolean(
+    filters.region ||
+      filters.cometOnly ||
+      filters.combatOnly ||
+      filters.innerBeltOnly ||
+      filters.outerBeltOnly,
+  );
+}
+
+function describeActiveSearchFilters(filters = getSearchFilterState()) {
+  const parts = [];
+  if (filters.region) parts.push(`region: ${filters.region}`);
+  if (filters.cometOnly) parts.push("outer Water Ice scout sites");
+  if (filters.combatOnly) parts.push("Blue Drift");
+  if (filters.innerBeltOnly) parts.push("inner tag");
+  if (filters.outerBeltOnly) parts.push("outer tag");
+  return parts.join(" · ");
+}
+
+function siteMatchesSearchFilters(site, filters = getSearchFilterState()) {
+  if (filters.cometOnly && Number(site.is_comet_candidate) !== 1) return false;
+  if (filters.combatOnly && Number(site.is_combat_candidate) !== 1) return false;
+
+  const tags = parseTags(site.tags_json);
+  if (filters.innerBeltOnly && !tags.includes("inner")) return false;
+  if (filters.outerBeltOnly && !tags.includes("outer")) return false;
+  return true;
+}
+
+function filterSitesForDisplay(sites, filters = getSearchFilterState()) {
+  if (!hasActiveSearchFilters(filters)) return sites;
+  return sites.filter((site) => siteMatchesSearchFilters(site, filters));
+}
+
+function getRadiusFilteredRows(originOverride) {
+  const origin = originOverride ?? getSelectedOrigin();
   if (!origin) return null;
 
   if (!origin.center_x && Number(origin.center_x) !== 0) {
     return [];
   }
 
-  const radius = getCandidateRadiusLy();
-  const region = el.regionSelect.value;
-  const cometOnly = el.cometOnly.checked;
-  const combatOnly = el.combatOnly.checked;
-  const innerBeltOnly = el.innerBeltOnly.checked;
-  const outerBeltOnly = el.outerBeltOnly.checked;
+  const filters = getSearchFilterState();
 
   return getAllSystemSummaries()
     .filter((row) => Number(row.system_id) !== Number(origin.system_id))
-    .filter((row) => !region || row.region === region)
-    .filter((row) => !cometOnly || Number(row.comet_site_count) > 0)
-    .filter((row) => !combatOnly || Number(row.combat_site_count) > 0)
-    .filter((row) => !innerBeltOnly || Number(row.inner_belt_site_count) > 0)
-    .filter((row) => !outerBeltOnly || Number(row.outer_belt_site_count) > 0)
+    .filter((row) => systemMatchesSearchFilters(row, filters))
     .map((row) => ({ ...row, distance_ly: distanceLy(origin, row) }))
-    .filter((row) => row.distance_ly <= radius)
+    .filter((row) => row.distance_ly <= filters.radiusLy)
     .sort(
       (a, b) =>
         a.distance_ly - b.distance_ly ||
+        (getSystemFuelProspect(b.system_id)?.max ?? 0) - (getSystemFuelProspect(a.system_id)?.max ?? 0) ||
         Number(b.outer_belt_site_count) - Number(a.outer_belt_site_count) ||
         Number(b.inner_belt_site_count) - Number(a.inner_belt_site_count) ||
         String(a.system_name).localeCompare(String(b.system_name)),
@@ -1036,10 +1792,14 @@ function refreshActiveSystem() {
 }
 
 function renderNearbyRow(row) {
+  const fuelBadge = formatNearbyFuelProspect(row);
   return `
     <button class="nearby-row" type="button" data-system-id="${escapeAttr(row.system_id)}">
-      <strong>${escapeHtml(row.system_name || row.system_id)}</strong>
-      <span>${row.distance_ly.toFixed(1)} ly · ${formatBeltNearbySummary(row)}</span>
+      <span class="nearby-row-title">
+        <strong>${escapeHtml(row.system_name || row.system_id)}</strong>
+        ${fuelBadge}
+      </span>
+      <span class="nearby-row-meta">${row.distance_ly.toFixed(1)} ly · ${formatBeltNearbySummary(row)}</span>
     </button>
   `;
 }
@@ -1047,6 +1807,8 @@ function renderNearbyRow(row) {
 function renderSystemDetail(systemId) {
   const id = normalizeSystemId(systemId);
   if (!id) return;
+
+  ensureRadiusInputValue();
 
   const summary = queryOne(
     `
@@ -1100,10 +1862,27 @@ function renderSystemDetail(systemId) {
   el.detailOuterBelts.textContent = formatNumber(summary.outer_belt_site_count);
   el.detailEmpty.hidden = true;
   el.detailContent.hidden = false;
-  el.systemReport.innerHTML = makeSystemReport(summary, sites);
+
+  const filters = getSearchFilterState();
+  const visibleSites = filterSitesForDisplay(sites, filters);
+
+  el.systemReport.innerHTML = makeSystemReport(summary, visibleSites);
   renderNearbySystems(summary);
-  updateSiteListNotes(sites);
-  el.siteList.innerHTML = sites.map(renderSiteCard).join("");
+  updateSiteListNotes(visibleSites);
+  updateSiteListHeading(visibleSites.length, sites.length, filters);
+  el.siteList.innerHTML = visibleSites.length
+    ? visibleSites.map(renderSiteCard).join("")
+    : `<div class="empty-state compact">No sites in this system match the current filters.</div>`;
+}
+
+function updateSiteListHeading(visibleCount, totalCount, filters = getSearchFilterState()) {
+  const heading = document.querySelector(".site-list-heading");
+  if (!heading) return;
+  if (!hasActiveSearchFilters(filters)) {
+    heading.textContent = "All sites in this system";
+    return;
+  }
+  heading.textContent = `Sites matching filters (${formatNumber(visibleCount)} of ${formatNumber(totalCount)})`;
 }
 
 function distanceLy(a, b) {
@@ -1114,7 +1893,8 @@ function distanceLy(a, b) {
 }
 
 function renderNearbySystems(origin) {
-  const radius = getCandidateRadiusLy();
+  const filters = getSearchFilterState();
+  const radius = filters.radiusLy;
 
   if (!origin.center_x && Number(origin.center_x) !== 0) {
     el.nearbySystems.innerHTML = `
@@ -1126,10 +1906,14 @@ function renderNearbySystems(origin) {
     return;
   }
 
-  const rows = getRadiusFilteredRows() ?? [];
+  const rows = getRadiusFilteredRows(origin) ?? [];
   const list = rows.length
     ? rows.map(renderNearbyRow).join("")
     : `<div class="empty-state compact">No systems matched your filters within ${formatNumber(radius)} ly — try a wider net or fewer demands.</div>`;
+
+  const filterNote = hasActiveSearchFilters(filters)
+    ? `<p class="nearby-filter-note">Active filters: ${escapeHtml(describeActiveSearchFilters(filters))}</p>`
+    : "";
 
   el.nearbySystems.innerHTML = `
     <section class="report-card nearby-card">
@@ -1137,7 +1921,8 @@ function renderNearbySystems(origin) {
         <h3>Nearby within ${formatNumber(radius)} ly</h3>
         <span class="pill muted">${formatNumber(rows.length)} systems</span>
       </div>
-      <p class="nearby-note">Distances follow starmap coordinates — click a name to leap there, preferably with fuel.</p>
+      ${filterNote}
+      <p class="nearby-note">Distances follow starmap coordinates. After each name: <b>Water Ice: No / Low / Medium / High chance</b> — a qualitative read from outer Shale, Grove, and Drift on the map, not a promise in your hold. Click to leap.</p>
       <div class="nearby-list">${list}</div>
     </section>
   `;
@@ -1179,13 +1964,13 @@ function renderSiteCard(site) {
   const fuelModel = computeFuelScan(site);
   const fuelNote = fuelModel
     ? `<div class="fuel-scan-note">
-        <strong>Prospect score: ${formatPercent(fuelModel.pFuel)}</strong>
+        <strong>Water Ice scout score: ${formatPercent(fuelModel.pFuel)}</strong>
         <span>
           grooves ${formatTier(fuelModel.stressTier)} ·
           flaking ${formatTier(fuelModel.skinTier)} ·
           venting ${formatTier(fuelModel.ventingTier)}
         </span>
-        <small>${escapeHtml(fuelModel.beltLabel)} — folklore derived from site names, not cosmic law.</small>
+        <small>${escapeHtml(fuelModel.beltLabel)} — Water Ice scout folklore from site names, not cosmic law.</small>
       </div>`
     : "";
 
@@ -1204,14 +1989,7 @@ function renderSiteCard(site) {
         <div>
           <div class="site-name">${escapeHtml(ecosystemName)}</div>
           <div class="site-meta">
-            ${escapeHtml(
-              [
-                site.object_type === "asteroidBelts" ? `Belt ${site.object_id}` : `Trojan ${site.object_id}`,
-                ringLabel(site, meta),
-              ]
-                .filter(Boolean)
-                .join(" · "),
-            )}
+            ${escapeHtml([landscapeSiteRole(site), ringLabel(site, meta)].filter(Boolean).join(" · "))}
           </div>
         </div>
       </div>
@@ -1238,6 +2016,8 @@ function resetDetailPanel() {
 }
 
 function onSearchInput() {
+  if (suppressSearchClear) return;
+
   const value = el.searchInput.value;
   if (originSystemId && value.trim() !== originSystemLabel.trim()) {
     clearOriginSystem();
@@ -1288,6 +2068,11 @@ function bindEvents() {
 
   el.regionSelect.addEventListener("change", refreshActiveSystem);
   el.candidateRadius.addEventListener("input", refreshActiveSystem);
+  el.candidateRadius.addEventListener("change", refreshActiveSystem);
+  el.candidateRadius.addEventListener("blur", () => {
+    ensureRadiusInputValue();
+    refreshActiveSystem();
+  });
   el.cometOnly.addEventListener("change", refreshActiveSystem);
   el.combatOnly.addEventListener("change", refreshActiveSystem);
   el.innerBeltOnly.addEventListener("change", refreshActiveSystem);
@@ -1299,7 +2084,7 @@ function bindEvents() {
     hideSearchSuggestions();
     resetDetailPanel();
     el.regionSelect.value = "";
-    el.candidateRadius.value = "";
+    el.candidateRadius.value = "100";
     el.cometOnly.checked = false;
     el.combatOnly.checked = false;
     el.innerBeltOnly.checked = false;
@@ -1307,10 +2092,16 @@ function bindEvents() {
   });
 }
 
+function initFilterDefaults() {
+  ensureRadiusInputValue();
+}
+
 async function boot() {
   try {
     bindEvents();
-    await Promise.all([loadDatabase(), loadOreReference(), loadEcosystemsCurated()]);
+    initFilterDefaults();
+    await Promise.all([loadDatabase(), loadOreReference(), loadEcosystemsCurated(), loadPlanetTypes()]);
+    buildSystemFuelProspectIndex();
     loadStats();
     loadRegions();
     setStatus("ready", "The index is open", "Name a system, choose it from the list, and let the Guide gossip about what waits nearby.");

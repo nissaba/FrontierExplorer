@@ -1,5 +1,7 @@
 # EVE Frontier System Explorer
 
+**Live site:** [https://fontier-explorer.netlify.app/](https://fontier-explorer.netlify.app/)
+
 ## Disclaimer
 
 This is an unofficial fan tool. Use it at your own risk. I am not responsible if you lose ships,
@@ -19,7 +21,15 @@ infrastructure, and Comet-source descriptions.
 
 ## Local Preview
 
-Run a local server from this folder:
+**Serve the `web/` folder**, not the repo root. If you only see a folder listing or the wrong page, you opened the parent directory.
+
+From the repo root:
+
+```bash
+./serve.sh
+```
+
+Or from this folder:
 
 ```bash
 cd "/Volumes/exd/frontier/Contents/web"
@@ -31,6 +41,8 @@ Open:
 ```text
 http://localhost:8080
 ```
+
+In Cursor / VS Code with Live Server, open the **`Contents` workspace** (or set Live Server root to `web/` via `.vscode/settings.json`).
 
 Do not open `index.html` directly with `file://`; browsers block fetching the SQLite database that way.
 
@@ -48,7 +60,7 @@ so every `git push` on `main` redeploys automatically.
    - **Branch:** `main`
    - **Build command:** (leave empty)
    - **Publish directory:** `.` (repo root)
-4. Deploy — you get a URL like `https://frontier-explorer.netlify.app`
+4. Deploy — production URL: [https://fontier-explorer.netlify.app/](https://fontier-explorer.netlify.app/)
 5. Optional: **Domain management** → custom subdomain (e.g. `frontier.yourdomain.com`)
 
 After that, only push to Git:

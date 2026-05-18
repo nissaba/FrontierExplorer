@@ -493,6 +493,13 @@ h2 {
   line-height: 1.4;
 }
 
+.nearby-filter-note {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 .nearby-list {
   display: grid;
   gap: 8px;
@@ -517,6 +524,36 @@ h2 {
   cursor: pointer;
 }
 
+.nearby-row-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nearby-fuel {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.nearby-fuel--none {
+  color: var(--faint);
+}
+
+.nearby-fuel--low {
+  color: #9aa8b8;
+}
+
+.nearby-fuel--medium {
+  color: #e8c06a;
+}
+
+.nearby-fuel--high {
+  color: #8fd4a8;
+}
+
 .nearby-row:hover {
   border-color: rgba(101, 217, 255, 0.45);
   background: rgba(101, 217, 255, 0.08);
@@ -526,7 +563,7 @@ h2 {
   font-size: 0.98rem;
 }
 
-.nearby-row span {
+.nearby-row-meta {
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 700;
@@ -644,6 +681,285 @@ h2 {
 .badge.outer-type {
   background: rgba(114, 242, 167, 0.1);
   color: var(--green);
+}
+
+.badge.ice {
+  background: rgba(101, 217, 255, 0.14);
+  color: #9edcff;
+}
+
+.planet-card .planet-lede {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.planet-card .planet-lede.compact {
+  margin-top: -4px;
+  font-size: 0.84rem;
+}
+
+.planet-subheading {
+  margin: 16px 0 8px;
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.planet-summary-item.anchor-unanchored {
+  border-color: rgba(255, 209, 102, 0.28);
+  background: rgba(255, 209, 102, 0.05);
+}
+
+.planet-summary-list {
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.planet-summary-item {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.planet-summary-item strong {
+  font-size: 0.95rem;
+}
+
+.planet-summary-item span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.planet-roles {
+  font-size: 0.78rem !important;
+  color: var(--faint) !important;
+}
+
+.planet-id,
+.planet-id-cell {
+  color: var(--faint);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.planet-type-label {
+  font-weight: 800;
+}
+
+.system-star-meta {
+  margin: 0 0 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.system-star-label {
+  color: #c98f5a;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.planet-map-summary {
+  margin: 0 0 12px;
+}
+
+.planet-count-line {
+  margin: 0 0 6px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.planet-type-count-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 12px;
+}
+
+.planet-type-count {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.planet-summary-item--detailed {
+  display: grid;
+  gap: 4px;
+}
+
+.planet-summary-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.planet-orbit-block {
+  display: grid;
+  gap: 2px;
+}
+
+.planet-orbit-meta,
+.planet-temp-meta {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.planet-type--ice,
+.chip.planet-type--ice {
+  color: #9edcff;
+}
+
+.planet-type--barren,
+.chip.planet-type--barren {
+  color: #c4a882;
+}
+
+.planet-type--temperate,
+.chip.planet-type--temperate {
+  color: #8fd4a8;
+}
+
+.planet-type--lava,
+.chip.planet-type--lava {
+  color: #ff9b71;
+}
+
+.planet-type--gas,
+.chip.planet-type--gas {
+  color: #e8c06a;
+}
+
+.planet-type--plasma,
+.chip.planet-type--plasma {
+  color: #d9a7ff;
+}
+
+.planet-type--storm,
+.chip.planet-type--storm {
+  color: #b8c4ff;
+}
+
+.planet-details {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.planet-details-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.planet-details-summary::-webkit-details-marker {
+  display: none;
+}
+
+.planet-details-count {
+  color: var(--faint);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.planet-details-body {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.orbit-child-group {
+  display: grid;
+  gap: 6px;
+}
+
+.orbit-child-heading {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.orbit-child-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.orbit-child-item {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.orbit-child-item--moon span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.orbit-child-item--other {
+  border-color: rgba(255, 209, 102, 0.22);
+  background: rgba(255, 209, 102, 0.04);
+}
+
+.orbit-child-role,
+.orbit-child-note {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.orbit-other-list {
+  margin-bottom: 0;
+}
+
+.planet-details summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.planet-table-wrap {
+  overflow-x: auto;
+}
+
+.planet-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+
+.planet-table th,
+.planet-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.planet-table th {
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .fuel-model-card {

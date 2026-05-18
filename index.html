@@ -47,8 +47,8 @@
             favors Comet, Dewdrop, Soot, Glint, and Ember.
           </li>
           <li>
-            <b>Site types</b> — Shale, Grove, and Blue Drift are names the map uses for outer fuel
-            scouting; they are not promises.
+            <b>Site types</b> — Shale, Grove, and Blue Drift are names the map uses for outer Water Ice scouting;
+            they are not promises.
           </li>
           <li>
             <b>Trojans (hearsay)</b> — inner tags lean hot, outer tags lean cold; temperate hosts sit
@@ -56,8 +56,13 @@
             does not verify them.
           </li>
           <li>
-            <b>Fuel prospect</b> — a playful read of Shale, Grove, and Drift from map names only. There is
-            nothing to fit in a high slot; you learn by mining the belt. Treat percentages as folklore.
+            <b>Water Ice (nearby list)</b> — labeled <b>Water Ice: No / Low / Medium / High chance</b> from Shale, Grove, and Drift on the map.
+            A scouting hint only, not a promise in your hold.
+          </li>
+          <li>
+            <b>Planets vs sites</b> — planets are on the system map (Barren, Temperate, Ice…). Belts, trojans,
+            L-points, and outer Blue Drift are map sites that may not orbit any listed planet; host refs outside
+            the planet list are anchors only, not “unknown” planets.
           </li>
         </ul>
       </section>
@@ -122,20 +127,20 @@
             </label>
 
             <label class="field compact">
-              <span>Candidate radius from searched system (ly)</span>
+              <span>Candidate radius from searched system (ly, default 100)</span>
               <input
                 id="candidate-radius"
                 type="number"
                 min="1"
                 max="10000"
                 step="1"
-                placeholder="100"
+                value="100"
               />
             </label>
 
             <label class="toggle">
               <input id="comet-only" type="checkbox" />
-              <span>Outer belt Shale / Grove / Blue Drift</span>
+              <span>Outer belt Water Ice scout (Shale / Grove / Drift)</span>
             </label>
 
             <label class="toggle">
@@ -156,7 +161,7 @@
 
           <div class="hint">
             Choose a system from the list, then browse neighbors in the detail panel. Filters shape
-            that nearby list; clicking a name jumps you there — ideally with fuel and a plan.
+            that nearby list; clicking a name jumps you there — ideally with a Water Ice plan.
           </div>
         </section>
 

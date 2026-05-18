@@ -1,0 +1,41 @@
+{
+  "source": "EVE Frontier/SharedCache/ResFiles/2c/2c3038b3c38e91a1_dbba38a1d2957b8beb2f4a14e6884efd",
+  "note": "planetCountByType keys from starmapcache; labels from English localization.",
+  "types": {
+    "11": {
+      "key": "Temperate",
+      "label": "Temperate",
+      "nameId": 535480
+    },
+    "12": {
+      "key": "Ice",
+      "label": "Ice",
+      "nameId": 535481
+    },
+    "13": {
+      "key": "Gas",
+      "label": "Gas",
+      "nameId": 535482
+    },
+    "2014": {
+      "key": "Ocean",
+      "label": "Ocean",
+      "nameId": null
+    },
+    "2015": {
+      "key": "Lava",
+      "label": "Lava",
+      "nameId": 535485
+    },
+    "2016": {
+      "key": "Barren",
+      "label": "Barren",
+      "nameId": 535478
+    },
+    "2063": {
+      "key": "Plasma",
+      "label": "Plasma",
+      "nameId": 535483
+    }
+  }
+}
