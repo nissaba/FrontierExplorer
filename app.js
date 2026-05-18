@@ -6,6 +6,7 @@ const SQL_WASM = "https://cdn.jsdelivr.net/npm/sql.js@1.12.0/dist/";
 const MAX_CANDIDATE_RADIUS_LY = 10000;
 const DEFAULT_RADIUS_LY = 100;
 const COMET_ECOSYSTEMS = new Set([8, 9, 10]);
+const METERS_PER_AU = 149597870700;
 const METERS_PER_LIGHT_YEAR = 9.4607304725808e15;
 const LIGHT_SECOND_METERS = 299792458;
 const HEAT_INDEX_K = 100;
@@ -137,6 +138,8 @@ const SITE_TAXONOMY = [
 ];
 
 let db;
+/** Set after DB load — older frontier.sqlite builds lack planet_x/y/z. */
+let systemPlanetsHasPositions = false;
 let selectedSystemId;
 let originSystemId;
 let originSystemLabel = "";
@@ -169,9 +172,6 @@ const el = {
   detailRegion: document.querySelector("#detail-region"),
   detailEmpty: document.querySelector("#detail-empty"),
   detailContent: document.querySelector("#detail-content"),
-  detailSites: document.querySelector("#detail-sites"),
-  detailInnerBelts: document.querySelector("#detail-inner-belts"),
-  detailOuterBelts: document.querySelector("#detail-outer-belts"),
   nearbySystems: document.querySelector("#nearby-systems"),
   systemReport: document.querySelector("#system-report"),
   siteListNotes: document.querySelector("#site-list-notes"),
@@ -439,7 +439,7 @@ function computeFuelScan(site) {
 
   return {
     type,
-    beltLabel: landscapeSiteRole(site),
+    beltLabel: displayEcosystemName(site),
     pStress,
     pSkin,
     pVenting,
@@ -554,8 +554,63 @@ function taxonomyForName(name) {
   );
 }
 
-function siteTypeLabel(objectType) {
-  return objectType === "asteroidBelts" ? "Asteroid Belt" : "Trojan";
+function buildLandscapeByKey(landscapeObjects) {
+  const map = new Map();
+  for (const obj of landscapeObjects) {
+    map.set(`${obj.object_type}:${obj.object_id}`, obj);
+  }
+  return map;
+}
+
+/** Starmap order: planet_item_id → 1-based index (Planet 1, Planet 2, …). */
+function buildPlanetIndexById(systemId) {
+  const map = new Map();
+  getSystemPlanets(systemId).forEach((planet, index) => {
+    map.set(Number(planet.planet_item_id), index + 1);
+  });
+  return map;
+}
+
+function formatNearPlanetIndex(planetId, planetIndexById) {
+  const index = planetIndexById.get(Number(planetId));
+  return index ? `Near planet #${index}` : null;
+}
+
+/** Which starmap planet a site is tied to (trojan host, else nearest by xyz). */
+function resolveSitePlanetId(site, planetsById, landscapeByKey = null) {
+  if (site.object_type === "trojans" && landscapeByKey) {
+    const obj = landscapeByKey.get(`trojans:${site.object_id}`);
+    const hostId = obj?.planet_id != null && obj.planet_id !== "" ? Number(obj.planet_id) : null;
+    if (hostId != null && planetsById.has(hostId)) return hostId;
+  }
+
+  if (site.x == null || site.y == null || site.z == null) return null;
+  const nearest = nearestPlanetToPoint({ x: site.x, y: site.y, z: site.z }, planetsById);
+  return nearest ? nearest.planetId : null;
+}
+
+/** Starmap planet # for a map site (landscape trojan host, else nearest by xyz). */
+function siteNearPlanetNote(site, planetsById, landscapeByKey = null, planetIndexById = null) {
+  if (!planetIndexById?.size) return null;
+  const planetId = resolveSitePlanetId(site, planetsById, landscapeByKey);
+  return planetId != null ? formatNearPlanetIndex(planetId, planetIndexById) : null;
+}
+
+function sortSitesByPlanet(sites, planetsById, landscapeByKey, planetIndexById) {
+  const planetOrder = (site) => {
+    const planetId = resolveSitePlanetId(site, planetsById, landscapeByKey);
+    return planetId != null ? (planetIndexById.get(planetId) ?? 9999) : 9999;
+  };
+  const siteLabel = (site) =>
+    displayEcosystemName(site) || site.ecosystem_name || String(site.site_id);
+
+  return [...sites].sort((a, b) => {
+    const byPlanet = planetOrder(a) - planetOrder(b);
+    if (byPlanet !== 0) return byPlanet;
+    const byName = siteLabel(a).localeCompare(siteLabel(b), "en", { sensitivity: "base" });
+    if (byName !== 0) return byName;
+    return Number(a.site_id) - Number(b.site_id);
+  });
 }
 
 async function loadOreReference() {
@@ -859,11 +914,22 @@ function formatPlanetAnchorNote(planetItemId, planetsById) {
   return "Landscape anchor only (no starmap planet)";
 }
 
-function siteSummaryForObject(sites, objectType, objectId) {
-  const matching = sites.filter(
+function landscapeObjectSites(sites, objectType, objectId) {
+  return sites.filter(
     (site) => site.object_type === objectType && Number(site.object_id) === Number(objectId),
   );
-  if (!matching.length) return "No named sites in extract";
+}
+
+function landscapeLagrangeRolePrefix(tags) {
+  const ring = tags.includes("inner") ? "Inner" : tags.includes("outer") ? "Outer" : "";
+  return ring ? `${ring} Lagrange (L-point)` : "Lagrange (L-point)";
+}
+
+function siteSummaryForObject(sites, objectType, objectId) {
+  const matching = landscapeObjectSites(sites, objectType, objectId);
+  if (!matching.length) {
+    return objectType === "asteroidBelts" ? "No named sites in extract" : "No named sites in extract";
+  }
 
   return topCounts(
     matching
@@ -951,13 +1017,128 @@ function formatLagrangeLabel(point) {
 function landscapeSiteRole(obj) {
   const tags = parseTags(obj.tags_json);
   const ring = tags.includes("inner") ? "Inner" : tags.includes("outer") ? "Outer" : "";
-  if (obj.object_type === "asteroidBelts") {
-    return ring ? `${ring} asteroid belt` : "Asteroid belt";
-  }
   if (obj.object_type === "trojans") {
     return ring ? `${ring} trojan` : "Trojan";
   }
-  return humanizeTag(obj.object_type);
+  return "";
+}
+
+/** Human label for a landscape host id (starmap planet, or non-planet anchor). */
+function landscapeHostLabel(hostId, planetsById) {
+  const id = Number(hostId);
+  if (!id) return null;
+  const planet = planetsById.get(id);
+  if (planet) return planetLabelFromTypeName(planet.planet_type_name);
+  return "star or off-map body";
+}
+
+function distanceMeters3d(a, b) {
+  const dx = Number(a.x) - Number(b.x);
+  const dy = Number(a.y) - Number(b.y);
+  const dz = Number(a.z) - Number(b.z);
+  if (![dx, dy, dz].every(Number.isFinite)) return null;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+function objectSiteCentroid(sites, objectType, objectId) {
+  const points = sites.filter(
+    (site) =>
+      site.object_type === objectType &&
+      Number(site.object_id) === Number(objectId) &&
+      site.x != null &&
+      site.y != null &&
+      site.z != null,
+  );
+  if (!points.length) return null;
+
+  const sum = points.reduce(
+    (acc, site) => {
+      acc.x += Number(site.x);
+      acc.y += Number(site.y);
+      acc.z += Number(site.z);
+      return acc;
+    },
+    { x: 0, y: 0, z: 0 },
+  );
+  const count = points.length;
+  return { x: sum.x / count, y: sum.y / count, z: sum.z / count, siteCount: count };
+}
+
+function nearestPlanetToPoint(point, planetsById) {
+  let nearest = null;
+
+  for (const [planetId, planet] of planetsById) {
+    if (planet.planet_x == null || planet.planet_y == null || planet.planet_z == null) continue;
+    const distanceM = distanceMeters3d(point, {
+      x: planet.planet_x,
+      y: planet.planet_y,
+      z: planet.planet_z,
+    });
+    if (distanceM == null) continue;
+    if (!nearest || distanceM < nearest.distanceM) {
+      nearest = {
+        planetId: Number(planetId),
+        planet,
+        distanceM,
+        distanceAu: distanceM / METERS_PER_AU,
+      };
+    }
+  }
+
+  return nearest;
+}
+
+function formatProximityAu(distanceAu) {
+  const value = Number(distanceAu);
+  if (!Number.isFinite(value)) return null;
+  if (value < 0.01) return "<0.01";
+  if (value < 10) return value.toFixed(2);
+  if (value < 100) return value.toFixed(1);
+  return value.toFixed(0);
+}
+
+function landscapeAnchorFootnote(obj, planetsById) {
+  const innerId = obj.inner_planet_id != null && obj.inner_planet_id !== "" ? Number(obj.inner_planet_id) : null;
+  const outerId = obj.outer_planet_id != null && obj.outer_planet_id !== "" ? Number(obj.outer_planet_id) : null;
+  const parts = [];
+  if (innerId != null) {
+    const label = landscapeHostLabel(innerId, planetsById);
+    if (label) parts.push(`landscape inner anchor: ${label}`);
+  }
+  if (outerId != null) {
+    const label = landscapeHostLabel(outerId, planetsById);
+    if (label) parts.push(`landscape outer anchor: ${label}`);
+  }
+  return parts.length ? parts.join(" · ") : "";
+}
+
+/**
+ * Lagrange (landscape asteroidBelts) / trojan labels — Lagrange uses site xyz vs planet centre.
+ */
+function landscapeSiteRoleDetailed(obj, planetsById, spatialNearest = null) {
+  const tags = parseTags(obj.tags_json);
+  const ring = tags.includes("inner") ? "Inner" : tags.includes("outer") ? "Outer" : "";
+  const ringPrefix = ring ? `${ring} ` : "";
+
+  if (obj.object_type === "trojans") {
+    const host = landscapeHostLabel(obj.planet_id, planetsById);
+    let line = ringPrefix ? `${ringPrefix}trojan` : "Trojan";
+    if (host) line += ` — landscape host: ${host}`;
+    if (spatialNearest) {
+      const au = formatProximityAu(spatialNearest.distanceAu);
+      const nearLabel = planetLabelFromTypeName(spatialNearest.planet.planet_type_name);
+      line += ` · site cluster ~${au} AU from ${nearLabel} centre`;
+    }
+    return line;
+  }
+
+  return "";
+}
+
+function landscapeObjectKind(objectType) {
+  if (objectType === "trojans") return "trojan";
+  if (objectType === "asteroidBelts") return "lagrange";
+  return "other";
 }
 
 function buildLandscapeSiteRow(obj, sites, planetsById) {
@@ -968,19 +1149,29 @@ function buildLandscapeSiteRow(obj, sites, planetsById) {
   const uniqueHostIds = [...new Set(hostIds)];
   const starmapHostIds = uniqueHostIds.filter((id) => starmapIds.has(id));
   const nonStarmapHostIds = uniqueHostIds.filter((id) => !starmapIds.has(id));
-  const anchorNotes =
-    uniqueHostIds.length > 0
-      ? uniqueHostIds.map((hostId) => formatPlanetAnchorNote(hostId, planetsById))
-      : ["No planet anchor — free-floating on the map"];
+
+  const centroid = objectSiteCentroid(sites, obj.object_type, obj.object_id);
+  const spatialNearest = centroid ? nearestPlanetToPoint(centroid, planetsById) : null;
+
+  const objectKind = landscapeObjectKind(obj.object_type);
+  let groupPlanetIds = [];
+  if (objectKind === "lagrange" && spatialNearest) {
+    groupPlanetIds = [spatialNearest.planetId];
+  } else if (objectKind === "trojan" && starmapHostIds.length) {
+    groupPlanetIds = starmapHostIds;
+  } else if (starmapHostIds.length) {
+    groupPlanetIds = starmapHostIds;
+  }
 
   return {
-    objectLabel: landscapeObjectLabel(obj.object_type, obj.object_id),
-    role: landscapeSiteRole(obj),
+    objectKind,
+    role: landscapeSiteRoleDetailed(obj, planetsById, spatialNearest),
     siteSummary: siteSummaryForObject(sites, obj.object_type, obj.object_id),
     starmapHostIds,
     nonStarmapHostIds,
-    anchorNotes,
-    isOther: starmapHostIds.length === 0,
+    spatialNearest,
+    groupPlanetIds,
+    isOther: groupPlanetIds.length === 0,
   };
 }
 
@@ -998,7 +1189,7 @@ function groupLandscapeSitesByPlanet(landscapeObjects, sites, planetsById) {
       other.push(row);
       continue;
     }
-    for (const planetId of row.starmapHostIds) {
+    for (const planetId of row.groupPlanetIds) {
       if (!byPlanetId.has(planetId)) byPlanetId.set(planetId, []);
       byPlanetId.get(planetId).push(row);
     }
@@ -1023,40 +1214,30 @@ function renderLandscapeSiteItem(row) {
   `;
 }
 
-function renderPlanetDetailsBlock(planet, planetIndex, children, star) {
+function renderLandscapeSiteGroup(heading, note, rows) {
+  if (!rows.length) return "";
+  const list = rows.map((row) => renderLandscapeSiteItem(row)).join("");
+  return `
+    <div class="orbit-child-group">
+      <h5 class="orbit-child-heading">${escapeHtml(heading)}</h5>
+      ${note ? `<p class="orbit-child-note">${escapeHtml(note)}</p>` : ""}
+      <ul class="orbit-child-list">${list}</ul>
+    </div>
+  `;
+}
+
+function renderPlanetDetailsBlock(planet, planetIndex, star) {
   const typeName = planet.planet_type_name;
   const label = planetLabelFromTypeName(typeName);
   const orbitMeta = renderPlanetOrbitMeta(planet, planetIndex, star);
-  const { sites = [] } = children;
-
-  const siteHtml = sites.map((row) => renderLandscapeSiteItem(row)).join("");
-
-  const childGroups = [];
-  if (siteHtml) {
-    childGroups.push(`
-      <div class="orbit-child-group">
-        <h5 class="orbit-child-heading">Belts &amp; trojans on this orbit</h5>
-        <ul class="orbit-child-list">${siteHtml}</ul>
-      </div>
-    `);
-  }
-
-  const hasChildren = childGroups.length > 0;
-  const childCountBits = [];
-  if (sites.length) childCountBits.push(`${sites.length} map site${sites.length === 1 ? "" : "s"}`);
-  const childCountText = childCountBits.length ? ` · ${childCountBits.join(", ")}` : "";
 
   return `
     <li class="planet-summary-item planet-summary-item--detailed">
-      <details class="planet-details"${hasChildren ? "" : " open"}>
+      <details class="planet-details" open>
         <summary class="planet-details-summary">
           <strong class="planet-type-label ${planetTypeClass(typeName)}">${escapeHtml(label)}</strong>
-          ${childCountText ? `<span class="planet-details-count">${escapeHtml(childCountText)}</span>` : ""}
         </summary>
-        <div class="planet-details-body">
-          ${orbitMeta}
-          ${childGroups.join("")}
-        </div>
+        <div class="planet-details-body">${orbitMeta}</div>
       </details>
     </li>
   `;
@@ -1078,7 +1259,7 @@ function renderOtherOrbitalBodiesSection(otherRows) {
 
   return `
     <h4 class="planet-subheading">Other orbital bodies</h4>
-    <p class="planet-lede compact">Belts and trojans with no starmap planet host.</p>
+    <p class="planet-lede compact">Lagrange (landscape asteroidBelts), and trojans whose anchors do not match a planet on the starmap (e.g. off-map host ids).</p>
     <ul class="planet-summary-list orbit-other-list">${list}</ul>
   `;
 }
@@ -1120,6 +1301,10 @@ function getSystemPlanets(systemId) {
   const id = normalizeSystemId(systemId);
   if (!id) return [];
 
+  const positionCols = systemPlanetsHasPositions
+    ? "planet_x, planet_y, planet_z"
+    : "NULL AS planet_x, NULL AS planet_y, NULL AS planet_z";
+
   return queryRows(
     `
       SELECT
@@ -1128,7 +1313,8 @@ function getSystemPlanets(systemId) {
         planet_type_name,
         orbit_m,
         orbit_au,
-        external_temp
+        external_temp,
+        ${positionCols}
       FROM system_planets
       WHERE system_id = $systemId
       ORDER BY sort_order, planet_item_id
@@ -1232,30 +1418,32 @@ function getLandscapeObjectsForSystem(systemId) {
   );
 }
 
-function landscapeObjectLabel(objectType, objectId) {
-  if (objectType === "asteroidBelts") return `Belt ${objectId}`;
-  if (objectType === "trojans") return `Trojan ${objectId}`;
-  return `${humanizeTag(objectType)} ${objectId}`;
+function landscapeObjectLabel(objectType) {
+  if (objectType === "asteroidBelts") return "Landscape zone";
+  if (objectType === "trojans") return "Trojan";
+  return humanizeTag(objectType);
 }
 
 function planetHostLabelFromTags(tagsJson, side = null) {
   return formatEvePlanetLabel(inferEvePlanetType(tagsJson, side)) || "Landscape host tags (not a planet)";
 }
 
-function buildPlanetHostRows(landscapeObjects) {
+function buildPlanetHostRows(landscapeObjects, sites = []) {
   const rows = [];
 
   for (const obj of landscapeObjects) {
     const ringTags = parseTags(obj.tags_json);
     const ring = ringTags.includes("inner") ? "Inner" : ringTags.includes("outer") ? "Outer" : "";
-    const objectLabel = landscapeObjectLabel(obj.object_type, obj.object_id);
+    const objectLabel = landscapeObjectLabel(obj.object_type);
     const iceTagged = Number(obj.is_ice_tagged) === 1;
 
     if (obj.object_type === "asteroidBelts") {
+      const hostRole = (side) =>
+        ring ? `${ring} landscape · ${side} anchor` : `Landscape · ${side} anchor`;
       if (obj.inner_planet_id) {
         rows.push({
           objectLabel,
-          role: ring ? `${ring} belt · inner host` : "Belt · inner host",
+          role: hostRole("inner"),
           planetId: Number(obj.inner_planet_id),
           planetType: inferEvePlanetType(obj.tags_json, "inner"),
           hostType: planetHostLabelFromTags(obj.tags_json, "inner"),
@@ -1265,7 +1453,7 @@ function buildPlanetHostRows(landscapeObjects) {
       if (obj.outer_planet_id) {
         rows.push({
           objectLabel,
-          role: ring ? `${ring} belt · outer host` : "Belt · outer host",
+          role: hostRole("outer"),
           planetId: Number(obj.outer_planet_id),
           planetType: inferEvePlanetType(obj.tags_json, "outer"),
           hostType: planetHostLabelFromTags(obj.tags_json, "outer"),
@@ -1310,12 +1498,10 @@ function summarizeUniquePlanets(hostRows) {
   return [...byId.values()].sort((a, b) => a.planetId - b.planetId);
 }
 
-function renderSystemPlanetsSection(systemId, sites = []) {
+function renderSystemPlanetsSection(systemId) {
   const planets = getSystemPlanets(systemId);
   const star = getSystemStar(systemId);
-  const planetsById = starmapPlanetMap(systemId);
   const landscape = getLandscapeObjectsForSystem(systemId);
-  const { byPlanetId, other: otherOrbital } = groupLandscapeSitesByPlanet(landscape, sites, planetsById);
 
   if (!planets.length) {
     if (!landscape.length) {
@@ -1327,7 +1513,7 @@ function renderSystemPlanetsSection(systemId, sites = []) {
       `;
     }
 
-    const hostRows = buildPlanetHostRows(landscape);
+    const hostRows = buildPlanetHostRows(landscape, []);
     const uniquePlanets = summarizeUniquePlanets(hostRows);
     const typeCounts = countBy(hostRows.map((row) => row.planetType).filter((type) => type !== "Unknown"));
     const typeChips = EVE_PLANET_TYPE_ORDER.filter((type) => typeCounts[type])
@@ -1355,10 +1541,9 @@ function renderSystemPlanetsSection(systemId, sites = []) {
     return `
       <section class="report-card planet-card">
         <h3>Planets &amp; map sites</h3>
-        <p class="planet-lede">Starmap planets missing from this database build — belts and trojans below. Rebuild frontier.sqlite to restore planet types.</p>
+        <p class="planet-lede">Starmap planets missing from this build — map sites are listed below. Rebuild frontier.sqlite to restore planet types.</p>
         ${typeChips ? `<div class="chips">${typeChips}</div>` : ""}
         <ul class="planet-summary-list anchor-list">${uniqueList}</ul>
-        ${renderOtherOrbitalBodiesSection(otherOrbital)}
       </section>
     `;
   }
@@ -1377,32 +1562,19 @@ function renderSystemPlanetsSection(systemId, sites = []) {
     .join("");
 
   const planetList = planets
-    .map((planet, index) => {
-      const planetId = Number(planet.planet_item_id);
-      return renderPlanetDetailsBlock(
-        planet,
-        index + 1,
-        {
-          sites: byPlanetId.get(planetId) || [],
-        },
-        star,
-      );
-    })
+    .map((planet, index) => renderPlanetDetailsBlock(planet, index + 1, star))
     .join("");
 
   return `
     <section class="report-card planet-card">
-      <h3>Planets &amp; map sites</h3>
+      <h3>Planets</h3>
       ${renderStarSummary(star)}
       <div class="planet-map-summary">
         <p class="planet-count-line">${formatNumber(planets.length)} planet${planets.length === 1 ? "" : "s"}</p>
         ${planetTypeLines ? `<ul class="planet-type-count-list">${planetTypeLines}</ul>` : ""}
       </div>
-      <p class="planet-lede">
-        Expand a planet for belts and trojans on its orbit. Unanchored bodies are under <b>Other orbital bodies</b>.
-      </p>
+      <p class="planet-lede compact">Map sites are in the list below; each may note <b>Near planet #N</b> (starmap order) when xyz is known.</p>
       <ul class="planet-summary-list">${planetList}</ul>
-      ${renderOtherOrbitalBodiesSection(otherOrbital)}
     </section>
   `;
 }
@@ -1436,40 +1608,40 @@ function makeSystemReport(summary, sites) {
     ? `${combatSites.length} Blue Drift marker${combatSites.length === 1 ? "" : "s"} — the disagreeable cousin of Water Ice scouting.`
     : "No Blue Drift in the files — possibly peaceful, possibly undocumented.";
 
-  const innerBeltText = innerBeltSites.length
-    ? `${innerBeltSites.length} inner belt${innerBeltSites.length === 1 ? "" : "s"} in the furnace lane.`
+  const innerRingText = innerBeltSites.length
+    ? `${innerBeltSites.length} inner-ring site${innerBeltSites.length === 1 ? "" : "s"} in the furnace lane.`
     : "No inner tags — the star's neighborhood goes unlisted.";
 
-  const outerBeltText = outerBeltSites.length
-    ? `${outerBeltSites.length} outer belt${outerBeltSites.length === 1 ? "" : "s"} in the long chill.`
+  const outerRingText = outerBeltSites.length
+    ? `${outerBeltSites.length} outer-ring site${outerBeltSites.length === 1 ? "" : "s"} in the long chill.`
     : "No outer tags — the rim keeps its secrets.";
 
   const livingNote =
     innerBeltSites.length && outerBeltSites.length
-      ? `This system offers both furnace-lane belts (${innerBeltSites.length}) and rimward belts (${outerBeltSites.length}) — a rare menu.`
+      ? `This system offers both furnace-lane sites (${innerBeltSites.length}) and rimward ones (${outerBeltSites.length}) — a rare menu.`
       : innerBeltSites.length
-        ? `Only inner belts (${innerBeltSites.length}) — hot ore country, short on comet romance.`
+        ? `Only inner-ring sites (${innerBeltSites.length}) — hot ore country, short on comet romance.`
         : outerBeltSites.length
-          ? `Only outer belts (${outerBeltSites.length})${cometSites.length ? `, with ${outerTypeText} on the manifest` : ""}.`
+          ? `Only outer-ring sites (${outerBeltSites.length})${cometSites.length ? `, with ${outerTypeText} on the manifest` : ""}.`
           : trojanSites.length >= 2 && asteroidSites.length >= 3
-            ? "Belts and trojans abound, yet the map forgot to say inner or outer — verify before you commit a freighter."
-            : "Thin tagging in the extract; treat all belt gossip as provisional until you've warped in and looked.";
+            ? "Map sites and trojans abound, yet the extract forgot to say inner or outer — verify before you commit a freighter."
+            : "Thin tagging in the extract; treat site gossip as provisional until you've warped in and looked.";
 
   return `
     <section class="report-card">
       <h3>At a glance</h3>
       <p>${escapeHtml(livingNote)}</p>
       <div class="report-grid">
-        <div><span>Asteroid Belts</span><strong>${formatNumber(asteroidSites.length)}</strong></div>
+        <div><span>Map sites</span><strong>${formatNumber(asteroidSites.length)}</strong></div>
         <div><span>Trojans</span><strong>${formatNumber(trojanSites.length)}</strong></div>
-        <div><span>Inner Belts</span><strong>${escapeHtml(innerBeltText)}</strong></div>
-        <div><span>Outer Belts</span><strong>${escapeHtml(outerBeltText)}</strong></div>
+        <div><span>Inner ring</span><strong>${escapeHtml(innerRingText)}</strong></div>
+        <div><span>Outer ring</span><strong>${escapeHtml(outerRingText)}</strong></div>
         <div><span>Outer Types in Data</span><strong>${escapeHtml(outerTypeText)}</strong></div>
         <div><span>Blue Drift</span><strong>${escapeHtml(combatText)}</strong></div>
       </div>
     </section>
 
-    ${renderSystemPlanetsSection(summary.system_id, sites)}
+    ${renderSystemPlanetsSection(summary.system_id)}
 
     ${renderFuelModelSection(sites)}
 
@@ -1519,6 +1691,8 @@ async function loadDatabase() {
 
   const bytes = await response.arrayBuffer();
   db = new SQL.Database(new Uint8Array(bytes));
+  const planetColumns = queryRows(`PRAGMA table_info(system_planets)`);
+  systemPlanetsHasPositions = planetColumns.some((row) => row.name === "planet_x");
 }
 
 function loadStats() {
@@ -1856,23 +2030,45 @@ function renderSystemDetail(systemId) {
   );
 
   el.detailTitle.textContent = `${summary.system_name || summary.system_id}`;
-  el.detailRegion.textContent = `${summary.region || "Unknown region"} · ${summary.system_id}`;
-  el.detailSites.textContent = formatNumber(summary.site_count);
-  el.detailInnerBelts.textContent = formatNumber(summary.inner_belt_site_count);
-  el.detailOuterBelts.textContent = formatNumber(summary.outer_belt_site_count);
+  el.detailRegion.textContent = summary.region || "Unknown region";
   el.detailEmpty.hidden = true;
   el.detailContent.hidden = false;
 
   const filters = getSearchFilterState();
-  const visibleSites = filterSitesForDisplay(sites, filters);
+  const planetsById = starmapPlanetMap(id);
+  const planetIndexById = buildPlanetIndexById(id);
+  const landscapeByKey = buildLandscapeByKey(getLandscapeObjectsForSystem(id));
+  const visibleSites = sortSitesByPlanet(
+    filterSitesForDisplay(sites, filters),
+    planetsById,
+    landscapeByKey,
+    planetIndexById,
+  );
+  const siteRenderContext = { planetsById, landscapeByKey, planetIndexById };
+  const renderSite = (site) => renderSiteCard(site, siteRenderContext);
 
-  el.systemReport.innerHTML = makeSystemReport(summary, visibleSites);
-  renderNearbySystems(summary);
-  updateSiteListNotes(visibleSites);
-  updateSiteListHeading(visibleSites.length, sites.length, filters);
-  el.siteList.innerHTML = visibleSites.length
-    ? visibleSites.map(renderSiteCard).join("")
-    : `<div class="empty-state compact">No sites in this system match the current filters.</div>`;
+  try {
+    el.systemReport.innerHTML = makeSystemReport(summary, visibleSites);
+    renderNearbySystems(summary);
+    updateSiteListNotes(visibleSites);
+    updateSiteListHeading(visibleSites.length, sites.length, filters);
+    el.siteList.innerHTML = visibleSites.length
+      ? visibleSites.map(renderSite).join("")
+      : `<div class="empty-state compact">No sites in this system match the current filters.</div>`;
+  } catch (error) {
+    console.error(error);
+    el.systemReport.innerHTML = `
+      <section class="report-card">
+        <h3>Could not render system report</h3>
+        <p class="planet-lede">${escapeHtml(error.message || String(error))}</p>
+        <p class="planet-lede compact">Rebuild and redeploy <code>web/data/frontier.sqlite</code> if the database schema is older than the app.</p>
+      </section>
+    `;
+    renderNearbySystems(summary);
+    el.siteList.innerHTML = visibleSites.length
+      ? visibleSites.map(renderSite).join("")
+      : `<div class="empty-state compact">No sites in this system match the current filters.</div>`;
+  }
 }
 
 function updateSiteListHeading(visibleCount, totalCount, filters = getSearchFilterState()) {
@@ -1932,12 +2128,16 @@ function renderNearbySystems(origin) {
   });
 }
 
-function renderSiteCard(site) {
+function renderSiteCard(site, context = {}) {
+  const { planetsById = new Map(), landscapeByKey = null, planetIndexById = null } = context;
   const tags = parseTags(site.tags_json);
   const isComet = Number(site.is_comet_candidate) === 1;
   const isCombat = Number(site.is_combat_candidate) === 1;
-  const type = siteTypeLabel(site.object_type);
   const meta = ecosystemMeta(site.ecosystem_id);
+  const nearPlanet =
+    planetIndexById?.size > 0
+      ? siteNearPlanetNote(site, planetsById, landscapeByKey, planetIndexById)
+      : null;
   const ecosystemName = displayEcosystemName(site);
   const family = ecosystemFamily(site.ecosystem_name || ecosystemName);
   const curatedNote = renderCuratedNote(site);
@@ -1945,11 +2145,11 @@ function renderSiteCard(site) {
   const outerType = sourceTypeName(ecosystemName);
   const ringTags = parseTags(site.tags_json);
   const badges = [
-    ringTags.includes("inner") && site.object_type === "asteroidBelts"
-      ? `<span class="badge">Inner belt</span>`
+    ringTags.includes("inner")
+      ? `<span class="badge">Inner</span>`
       : "",
-    ringTags.includes("outer") && site.object_type === "asteroidBelts"
-      ? `<span class="badge">Outer belt</span>`
+    ringTags.includes("outer")
+      ? `<span class="badge">Outer</span>`
       : "",
     isCombat
       ? `<span class="badge combat">Blue Drift</span>`
@@ -1989,7 +2189,7 @@ function renderSiteCard(site) {
         <div>
           <div class="site-name">${escapeHtml(ecosystemName)}</div>
           <div class="site-meta">
-            ${escapeHtml([landscapeSiteRole(site), ringLabel(site, meta)].filter(Boolean).join(" · "))}
+            ${escapeHtml([nearPlanet, ringLabel(site, meta)].filter(Boolean).join(" · "))}
           </div>
         </div>
       </div>
