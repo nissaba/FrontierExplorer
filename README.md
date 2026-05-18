@@ -2,101 +2,31 @@
 
 **Live site:** [https://fontier-explorer.netlify.app/](https://fontier-explorer.netlify.app/)
 
+An unofficial fan index for the Frontier: search a system by name or ID and see what the extracted map data claims is there — belt sites, trojans, planets, and neighbors within a chosen radius.
+
 ## Disclaimer
 
-This is an unofficial fan tool. Use it at your own risk. I am not responsible if you lose ships,
-die, or make bad routing, mining, combat, or settlement decisions from this information.
+Not official. Not endorsed by CCP Games or Fenris Creations. Data is stitched from game extracts and notes; it may be incomplete, stale, or wrong. Use at your own risk for routes, mining, or combat.
 
-The data is extracted and interpreted from game files, community knowledge, and online
-documentation, and may be incomplete, outdated, or wrong. This website is not official, and
-CCP Games / Fenris Creations have not endorsed, reviewed, approved, or participated in it.
+## What you can do
 
-Static website for browsing `frontier.sqlite` in the browser. It lets users type a system
-name or ID and get a human-readable report with site mix, environment tags,
-outer-belt D1 scouting targets, Blue Drift risk, and coordinates.
+- **Search systems** — type a name (e.g. `I86-PCK`) or numeric system ID; pick from suggestions.
+- **System report** — summary of map sites and trojans, inner vs outer ring counts, outer site types (Shale / Grove / Blue Drift), and Blue Drift combat markers where the data flags them.
+- **Planets** — starmap planets with orbit and temperature when the database includes them; otherwise inferred types from landscape tags where available.
+- **All sites in system** — every named map site in one list, sorted by **planet #1, #2, #3…** (starmap order), then name. Each card can show **Near planet #N** when positions allow — a placement hint, not proof of a shared orbit.
+- **Nearby systems** — systems within a radius (default 100 ly) of your searched system, with distance and inner/outer belt site counts on the map.
+- **Filters** — narrow the nearby list and site list by region, outer Water Ice scout sites (Shale / Grove / Drift), Blue Drift combat, inner belt tags, or outer belt tags.
 
-It also calls out likely normal build-ore prospects by highlighting inner-ring belt sites.
-Matching site names are classified with a local taxonomy for combat, salvage, industrial,
-infrastructure, and Comet-source descriptions.
+## How to read the labels
 
-## Local Preview
+| Label | Meaning |
+|--------|---------|
+| **Inner vs outer** | Tags on map sites. Inner leans the furnace lane; outer leans the long chill. |
+| **Shale, Grove, Blue Drift** | Outer-belt site type names in the extract — used for Water Ice scouting hints, not loot guarantees. |
+| **Water Ice: No / Low / Medium / High** | Qualitative scout read from outer Shale, Grove, and Drift on the **nearby** list — folklore from site names, not a promise in your hold. |
+| **Trojans** | Trojan bar sites; inner/outer/temperate tags in data are hearsay about hot vs cold ore stories, not verified in-game. |
+| **Near planet #N** | Which starmap planet (#1, #2, #3…) a site is associated with by host tag or nearest position. |
 
-**Serve the `web/` folder**, not the repo root. If you only see a folder listing or the wrong page, you opened the parent directory.
+## Database stats
 
-From the repo root:
-
-```bash
-./serve.sh
-```
-
-Or from this folder:
-
-```bash
-cd "~/frontier/Contents/web"
-python3 -m http.server 8080
-```
-
-Open:
-
-```text
-http://localhost:8080
-```
-
-In Cursor / VS Code with Live Server, open the **`Contents` workspace** (or set Live Server root to `web/` via `.vscode/settings.json`).
-
-Do not open `index.html` directly with `file://`; browsers block fetching the SQLite database that way.
-
-## Live site (without touching your existing GitHub Pages)
-
-Your personal GitHub Pages site (e.g. `nissaba.github.io` from another repo) stays as-is.
-Host **this** project on Netlify or Cloudflare Pages with a **separate URL**, linked to this repo
-so every `git push` on `main` redeploys automatically.
-
-### Recommended: Netlify + GitHub
-
-1. Sign in at [netlify.com](https://www.netlify.com) with GitHub
-2. **Add new site → Import an existing project** → choose `nissaba/FrontierExplorer`
-3. Settings (should match `netlify.toml`):
-   - **Branch:** `main`
-   - **Build command:** (leave empty)
-   - **Publish directory:** `.` (repo root)
-4. Deploy — production URL: [https://fontier-explorer.netlify.app/](https://fontier-explorer.netlify.app/)
-5. Optional: **Domain management** → custom subdomain (e.g. `frontier.yourdomain.com`)
-
-After that, only push to Git:
-
-```bash
-git push origin main
-```
-
-Netlify rebuilds in ~1 minute. No change to your main GitHub Pages site.
-
-### Alternative: Cloudflare Pages
-
-1. [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages** → **Create**
-2. Connect GitHub → `FrontierExplorer`
-3. **Build:** none · **Output directory:** `/` (root)
-4. Separate URL on `*.pages.dev` (database is ~35 MB; Netlify is simpler if Cloudflare complains about file size)
-
-### Do not enable GitHub Pages on this repo
-
-If you turn on Pages here, you only get `github.io/FrontierExplorer/` (a sub-path), which is
-**not** the same as replacing `github.io` — but if you already use Pages elsewhere, use Netlify
-to avoid confusion.
-
-## Possible D1 Scouting Rule
-
-The `comet_sites` view comes from `frontier.sqlite` and marks site types worth scouting for
-D1 fuel:
-
-- Ecosystem `8`: Natural World - Outer Belt - Shale
-- Ecosystem `9`: Natural World - Outer Belt - Grove
-- Ecosystem `10`: Broken World - Outer Belt - Blue Drift
-
-The database does not contain fuel or ore item spawns directly. It contains site types. The
-fuel scan model uses outer-belt Shale, Grove, and Blue Drift site types plus a simple
-three-factor heuristic (thermal stress, skin depth, venting). These are scouting signals, not
-guaranteed fuel sites. Counts come from extracted data records and may not map 1:1 to visible
-in-game anomalies. Blue Drift is marked as a combat candidate.
-
-Normal build ores are treated as an inner-ring belt scouting signal, not a direct item spawn.
+The header shows totals across the index: systems, sites, inner-belt sites, and outer-belt sites loaded from the Frontier extract.
