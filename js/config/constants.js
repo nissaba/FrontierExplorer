@@ -1,0 +1,13 @@
+export const DB_URL = "./data/frontier.sqlite";
+export const ORE_REFERENCE_URL = "./data/ore_reference.json";
+export const ECOSYSTEMS_CURATED_URL = "./data/ecosystems_curated.json";
+export const PLANET_TYPES_URL = "./data/planet_types.json";
+export const SQL_WASM = "https://cdn.jsdelivr.net/npm/sql.js@1.12.0/dist/";
+export const MAX_CANDIDATE_RADIUS_LY = 10000;
+export const DEFAULT_RADIUS_LY = 100;
+export const COMET_ECOSYSTEMS = new Set([8, 9, 10]);
+export const METERS_PER_AU = 149597870700;
+export const METERS_PER_LIGHT_YEAR = 9.4607304725808e15;
+export const LIGHT_SECOND_METERS = 299792458;
+export const HEAT_INDEX_K = 100;
+export const EVE_PLANET_TYPE_ORDER = ["Ice", "Temperate", "Barren", "Lava", "Plasma", "Gas", "Storm", "Ocean", "Shattered"];

@@ -14,3 +14,10 @@
     Cross-Origin-Resource-Policy = "same-origin"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
     Content-Security-Policy = "default-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:; font-src 'self'; manifest-src 'self'; worker-src 'self' blob:; upgrade-insecure-requests"
+
+# Large sqlite index: correct MIME + long cache (filename changes on rebuild).
+[[headers]]
+  for = "/data/*.sqlite"
+  [headers.values]
+    Content-Type = "application/vnd.sqlite3"
+    Cache-Control = "public, max-age=86400, immutable"
