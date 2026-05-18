@@ -32,7 +32,7 @@ From the repo root:
 Or from this folder:
 
 ```bash
-cd "/Volumes/exd/frontier/Contents/web"
+cd "~/frontier/Contents/web"
 python3 -m http.server 8080
 ```
 
