@@ -1,0 +1,125 @@
+{
+  "source": "game_data/ecosystems_curated.csv",
+  "ecosystems": {
+    "2": {
+      "nom_interne": "Broken World - Inner Belt - Derelict Quarry",
+      "label_jeu": "Inner Derelict Quarry",
+      "name_id": 1031679,
+      "entry_dungeon_id": 13717,
+      "description_courte": "A starter quarry left behind when whoever built this place remembered they had somewhere else to be.",
+      "contenu_connu": "Char, Feldspar Crystals, Slag, and Platinum-Palladium — the polite metals for your first walls and your first regrets."
+    },
+    "3": {
+      "nom_interne": "Broken World - Inner Belt - Derelict Bay",
+      "label_jeu": "Inner Derelict Bay",
+      "name_id": 1031678,
+      "entry_dungeon_id": 13716,
+      "description_courte": "An inner debris field of floating structural litter — less a bay than a slow-motion accident in orbit.",
+      "contenu_connu": "Surface wrecks worth picking over for basic Salvage and enough light fuel to reach the next mistake."
+    },
+    "4": {
+      "nom_interne": "Natural World - Inner Belt - Stone Cluster",
+      "label_jeu": "Inner Stone Cluster",
+      "name_id": 1031680,
+      "entry_dungeon_id": 13718,
+      "description_courte": "A modest congregation of small rocky asteroids that have not yet learned ambition.",
+      "contenu_connu": "Low-grade raw ore and humble carbon stone — the universe's way of saying \"start small.\""
+    },
+    "5": {
+      "nom_interne": "Natural World - Inner Belt - Ancient Cluster",
+      "label_jeu": "Inner Ancient Cluster",
+      "name_id": 1031681,
+      "entry_dungeon_id": 13719,
+      "description_courte": "Larger, older asteroids that have been politely ignoring miners for a very long time.",
+      "contenu_connu": "Denser natural ore suited to tier-one components — old rock, young industry."
+    },
+    "6": {
+      "nom_interne": "Broken World - Inner Asteroid field - Ruins",
+      "label_jeu": "Inner Ruins",
+      "name_id": 1031685,
+      "entry_dungeon_id": 13720,
+      "description_courte": "Artificial structures crushed into the belt as though the sky once dropped a city here.",
+      "contenu_connu": "Damaged containers and electronic splinters — promising for hacking, salvage, and mild property damage."
+    },
+    "7": {
+      "nom_interne": "Broken World - Outer Belt - Vestiges",
+      "label_jeu": "Outer Vestiges",
+      "name_id": 1034665,
+      "entry_dungeon_id": 13930,
+      "description_courte": "A peripheral graveyard of ships and stations that did not finish their journeys.",
+      "contenu_connu": "Medium wrecks yielding industrial parts and modules patient enough to be recycled."
+    },
+    "8": {
+      "nom_interne": "Natural World  - Outer Belt - Shale",
+      "label_jeu": "Outer Shale",
+      "name_id": 1034667,
+      "entry_dungeon_id": 13931,
+      "description_courte": "A sedimentary asteroid field — geology with paperwork.",
+      "contenu_connu": "Layered hydrocarbons and feuilleted minerals for alloys that sound more impressive than \"rock.\""
+    },
+    "9": {
+      "nom_interne": "Natural World  - Outer Belt - Grove",
+      "label_jeu": "Outer Grove",
+      "name_id": 1034669,
+      "entry_dungeon_id": 13932,
+      "description_courte": "An outer anomaly wrapped in gas or dust, like a weather system that forgot which planet it belonged to.",
+      "contenu_connu": "Volatile gas and minerals for life support, clones, and fuels that burn with opinions."
+    },
+    "10": {
+      "nom_interne": "Broken World - Outer Belt - Blue Drift",
+      "label_jeu": "Outer Blue Drift",
+      "name_id": 1035931,
+      "entry_dungeon_id": 13928,
+      "description_courte": "A rim of comets and blue ice at the system's chilly edge.",
+      "contenu_connu": "Comet ore and Hydrated Sulfide Matrix — allegedly essential to Portable Printers, which the Guide cannot confirm without void insurance."
+    },
+    "11": {
+      "nom_interne": "Broken World - Outer Belt - Abandoned Foundry",
+      "label_jeu": "Outer Abandoned Foundry",
+      "name_id": 1034663,
+      "entry_dungeon_id": 13929,
+      "description_courte": "A metalworks complex abandoned mid-smelt — industry's answer to walking out during lunch.",
+      "contenu_connu": "Heavy refined stock and containers that may still contain blueprints, if luck and crowbars align."
+    },
+    "12": {
+      "nom_interne": "Natural World  - Trojan - Garden",
+      "label_jeu": "Trojan Garden",
+      "name_id": 1034713,
+      "entry_dungeon_id": 13941,
+      "description_courte": "A biomechanical anomaly tended by a dormant AI presence with excellent boundary issues.",
+      "contenu_connu": "Exotic resources tied to biotech and structural modifications — bring curiosity and a spare hull."
+    },
+    "13": {
+      "nom_interne": "Broken World - Trojans - Drifting Annex",
+      "label_jeu": "Trojan Drifting Annex",
+      "name_id": 1034715,
+      "entry_dungeon_id": 13942,
+      "description_courte": "A broken outpost still guarded by a faction that has not received the memo about peace talks.",
+      "contenu_connu": "Combat against Grave Drones; survivors speak of Exclave Technocores and Medium Shipyard loot — the Guide notes this is not a sightseeing tour."
+    },
+    "20": {
+      "nom_interne": "Transitional Belt - Trade Hub",
+      "label_jeu": "Fringe Tallyport",
+      "name_id": 1036883,
+      "entry_dungeon_id": 14026,
+      "description_courte": "A neutral convergence point — or the ruin of one — where commerce once pretended to be civilized.",
+      "contenu_connu": "Favored for player meetings, contract beacons, and markets that appear when you are not looking."
+    },
+    "21": {
+      "nom_interne": "Transitional Belt - Broken",
+      "label_jeu": "Fringe Latticeway",
+      "name_id": 1036885,
+      "entry_dungeon_id": 14027,
+      "description_courte": "A unstable debris sea left after something large was reduced to enthusiasm.",
+      "contenu_connu": "Dense mixed metal scrap and crushed ore that vacuum collectors find almost insultingly cooperative."
+    },
+    "22": {
+      "nom_interne": "Transitional - Natural",
+      "label_jeu": "Fringe Crossing",
+      "name_id": 1036887,
+      "entry_dungeon_id": 14028,
+      "description_courte": "A comparatively untouched band between belts — rare proof that not every rock has been argued over.",
+      "contenu_connu": "A balanced transitional ore mix for topping up variety before the next long hop."
+    }
+  }
+}

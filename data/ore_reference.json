@@ -7,17 +7,20 @@
         {
           "name": "Char",
           "typeId": 91374,
-          "nameId": 1032111
+          "nameId": 1032111,
+          "label": "Char"
         },
         {
           "name": "Slag",
           "typeId": 91375,
-          "nameId": 1032112
+          "nameId": 1032112,
+          "label": "Slag"
         },
         {
           "name": "Ingot",
           "typeId": 91376,
-          "nameId": 1032113
+          "nameId": 1032113,
+          "label": "Ingot"
         }
       ]
     },
@@ -27,28 +30,33 @@
         {
           "name": "Comet",
           "typeId": 91377,
-          "nameId": 1032114
+          "nameId": 1032114,
+          "label": "Comet"
         },
         {
           "name": "Dewdrop",
           "typeId": 91378,
-          "nameId": 1032115
+          "nameId": 1032115,
+          "label": "Dewdrop"
         },
         {
           "name": "Soot",
           "typeId": 91381,
           "nameId": 1032118,
-          "note": "Client name is Soot (not Sooth)"
+          "note": "Client name is Soot (not Sooth)",
+          "label": "Soot"
         },
         {
           "name": "Ember",
           "typeId": 91379,
-          "nameId": 1032116
+          "nameId": 1032116,
+          "label": "Ember"
         },
         {
           "name": "Glint",
           "typeId": 91380,
-          "nameId": 1032117
+          "nameId": 1032117,
+          "label": "Glint"
         }
       ]
     }
@@ -70,7 +78,10 @@
         13637,
         13638,
         13708
-      ]
+      ],
+      "labelJeu": "Inner Derelict Quarry",
+      "nameId": 1031679,
+      "siteType": "Derelict Quarry"
     },
     "3": {
       "oreZone": "hot",
@@ -88,7 +99,10 @@
         13638,
         13640,
         13658
-      ]
+      ],
+      "labelJeu": "Inner Derelict Bay",
+      "nameId": 1031678,
+      "siteType": "Derelict Bay"
     },
     "4": {
       "oreZone": "hot",
@@ -102,7 +116,10 @@
         13637,
         13638,
         13707
-      ]
+      ],
+      "labelJeu": "Inner Stone Cluster",
+      "nameId": 1031680,
+      "siteType": "Stone Cluster"
     },
     "5": {
       "oreZone": "hot",
@@ -116,7 +133,10 @@
         13639,
         13704,
         13705
-      ]
+      ],
+      "labelJeu": "Inner Ancient Cluster",
+      "nameId": 1031681,
+      "siteType": "Ancient Cluster"
     },
     "6": {
       "oreZone": "hot",
@@ -130,7 +150,10 @@
         13619,
         13626,
         13632
-      ]
+      ],
+      "labelJeu": "Inner Ruins",
+      "nameId": 1031685,
+      "siteType": "Ruins"
     },
     "7": {
       "oreZone": "mixed",
@@ -149,7 +172,10 @@
         13708,
         13937,
         13940
-      ]
+      ],
+      "labelJeu": "Outer Vestiges",
+      "nameId": 1034665,
+      "siteType": "Vestiges"
     },
     "8": {
       "oreZone": "cold",
@@ -162,7 +188,9 @@
         13705,
         13937,
         13939
-      ]
+      ],
+      "labelJeu": "Outer Shale",
+      "nameId": 1034667
     },
     "9": {
       "oreZone": "cold",
@@ -179,7 +207,9 @@
         13705,
         13707,
         13940
-      ]
+      ],
+      "labelJeu": "Outer Grove",
+      "nameId": 1034669
     },
     "10": {
       "oreZone": "cold",
@@ -193,7 +223,9 @@
         13705,
         13939,
         13940
-      ]
+      ],
+      "labelJeu": "Outer Blue Drift",
+      "nameId": 1035931
     },
     "11": {
       "oreZone": "mixed",
@@ -213,7 +245,10 @@
         13937,
         13939,
         13940
-      ]
+      ],
+      "labelJeu": "Outer Abandoned Foundry",
+      "nameId": 1034663,
+      "siteType": "Abandoned Foundry"
     },
     "12": {
       "oreZone": "mixed",
@@ -230,7 +265,10 @@
         13638,
         13707,
         13939
-      ]
+      ],
+      "labelJeu": "Trojan Garden",
+      "nameId": 1034713,
+      "siteType": "Garden"
     },
     "13": {
       "oreZone": "mixed",
@@ -256,7 +294,10 @@
         13707,
         13868,
         13939
-      ]
+      ],
+      "labelJeu": "Trojan Drifting Annex",
+      "nameId": 1034715,
+      "siteType": "Drifting Annex"
     },
     "20": {
       "oreZone": "transitional",
@@ -277,7 +318,10 @@
         13937,
         13939,
         13940
-      ]
+      ],
+      "labelJeu": "Fringe Tallyport",
+      "nameId": 1036883,
+      "siteType": "Fringe Tallyport"
     },
     "21": {
       "oreZone": "transitional",
@@ -306,7 +350,10 @@
         13937,
         13939,
         13940
-      ]
+      ],
+      "labelJeu": "Fringe Latticeway",
+      "nameId": 1036885,
+      "siteType": "Fringe Latticeway"
     },
     "22": {
       "oreZone": "transitional",
@@ -326,8 +373,48 @@
         13937,
         13939,
         13940
-      ]
+      ],
+      "labelJeu": "Fringe Crossing",
+      "nameId": 1036887,
+      "siteType": "Fringe Crossing"
     }
   },
-  "dungeonNote": "Each ecosystem also references dungeonID values in ecosystem.json (entry + patterns). Ore spawns per rock are defined inside those dungeon templates in staticdata/dungeons.fsdbinary \u2014 not yet decoded in this explorer."
+  "dungeonNote": "Each ecosystem also references dungeonID values in ecosystem.json (entry + patterns). Ore spawns per rock are defined inside those dungeon templates in staticdata/dungeons.fsdbinary — not yet decoded in this explorer.",
+  "entityAlignment": {
+    "ores": {
+      "Char": {
+        "typeId": 91374,
+        "nameId": 1032111
+      },
+      "Slag": {
+        "typeId": 91375,
+        "nameId": 1032112
+      },
+      "Ingot": {
+        "typeId": 91376,
+        "nameId": 1032113
+      },
+      "Comet": {
+        "typeId": 91377,
+        "nameId": 1032114
+      },
+      "Dewdrop": {
+        "typeId": 91378,
+        "nameId": 1032115
+      },
+      "Ember": {
+        "typeId": 91379,
+        "nameId": 1032116
+      },
+      "Glint": {
+        "typeId": 91380,
+        "nameId": 1032117
+      },
+      "Soot": {
+        "typeId": 91381,
+        "nameId": 1032118
+      }
+    },
+    "note": "typeId/nameId from localization pickle; ecosystem nameId/entryDungeonId from ecosystems_curated.csv"
+  }
 }

@@ -970,6 +970,14 @@ h2 {
   font-weight: 600;
 }
 
+.site-list-notes {
+  margin-bottom: 12px;
+}
+
+.site-list-notes .ore-haystack-note {
+  margin: 0;
+}
+
 .fuel-scan-note {
   margin-top: 12px;
   padding: 12px;
@@ -1052,6 +1060,49 @@ h2 {
 .taxonomy-note small {
   color: var(--faint);
   line-height: 1.4;
+}
+
+.curated-note {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(255, 196, 120, 0.2);
+  border-radius: 16px;
+  background: rgba(255, 196, 120, 0.06);
+}
+
+.curated-note strong,
+.curated-note p,
+.curated-note small {
+  display: block;
+}
+
+.curated-internal-name {
+  display: block;
+  margin-top: 4px;
+  color: var(--faint);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.curated-note p {
+  margin: 8px 0;
+  color: var(--muted);
+  line-height: 1.42;
+}
+
+.curated-note small {
+  color: var(--faint);
+  line-height: 1.4;
+}
+
+.ore-rumor {
+  color: var(--amber, #e8b060);
+  font-style: italic;
+  font-weight: 700;
+}
+
+.ore-zone-body .ore-rumor::after {
+  content: ",";
 }
 
 @media (max-width: 1180px) {

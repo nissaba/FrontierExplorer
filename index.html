@@ -14,17 +14,17 @@
           <p class="eyebrow">EVE Frontier</p>
           <h1>System Explorer</h1>
           <p class="lede">
-            Type a system name or ID to understand what you are jumping into: site mix,
-            resources, inner-ring and outer-ring belt sites, site types in the extracted data,
-            and exploration opportunities. Use filters to narrow by belt ring, outer-belt site
-            types, or Blue Drift combat markers.
+            A modest Hitchhiker-style index for the Frontier: type a system name or ID and learn what
+            the map claims is waiting — belt gossip, trojan bar stories, inner heat versus outer chill,
+            and the occasional Blue Drift unpleasantness. Filters help you narrow the nearby list;
+            certainty does not come included.
           </p>
         </div>
         <div class="status-card" id="status-card">
           <span class="status-dot"></span>
           <div>
             <strong id="status-title">Loading database</strong>
-            <p id="status-detail">Fetching frontier.sqlite...</p>
+            <p id="status-detail">Fetching frontier.sqlite from wherever we left it...</p>
           </div>
         </div>
       </header>
@@ -32,29 +32,32 @@
       <section class="disclaimer" aria-label="Unofficial site disclaimer">
         <strong>Unofficial fan tool.</strong>
         <span>
-          Use at your own risk. I am not responsible if you lose ships, die, or make bad routing,
-          mining, combat, or settlement decisions from this information. The data is extracted and
-          interpreted from game files, community knowledge, and online documentation, and may be
-          incomplete, outdated, or wrong. This website is not official, and CCP Games / Fenris
-          Creations have not endorsed, reviewed, approved, or participated in it.
+          Use at your own risk. The Guide accepts no liability for lost ships, poor routes, optimistic
+          mining, or combat decisions made in a hurry. Data is stitched together from game files,
+          hearsay, and documentation that may be incomplete, stale, or simply inventive. Not official;
+          not endorsed by CCP Games or Fenris Creations.
         </span>
       </section>
 
       <section class="belt-guide ore-guide-banner" aria-label="Data guide">
-        <strong>How to read this explorer</strong>
+        <strong>How to read this chapter</strong>
         <ul class="guide-list">
           <li>
-            <b>Inner vs outer belts</b> — inner rings skew hot (Char, Slag, Ingot); outer rings skew cold
-            (Comet, Dewdrop, Soot, Glint, Ember).
+            <b>Inner vs outer belts</b> — the furnace lane favors Char, Slag, and Ingot; the long chill
+            favors Comet, Dewdrop, Soot, Glint, and Ember.
           </li>
           <li>
-            <b>Site types</b> — Shale, Grove, and Blue Drift mark outer fuel scouting targets in the map data.
+            <b>Site types</b> — Shale, Grove, and Blue Drift are names the map uses for outer fuel
+            scouting; they are not promises.
           </li>
           <li>
-            <b>Trojans</b> — can mix hot and cold rocks even when the map only shows Garden or Annex.
+            <b>Trojans (hearsay)</b> — inner tags lean hot, outer tags lean cold; temperate hosts sit
+            between the rings, where pilots tell stories about mixed rocks. The Guide repeats them; it
+            does not verify them.
           </li>
           <li>
-            <b>Fuel scan</b> — compares Shale vs Grove vs Drift site types; not confirmed in-game odds.
+            <b>Fuel prospect</b> — a playful read of Shale, Grove, and Drift from map names only. There is
+            nothing to fit in a high slot; you learn by mining the belt. Treat percentages as folklore.
           </li>
         </ul>
       </section>
@@ -152,8 +155,8 @@
           </div>
 
           <div class="hint">
-            Pick a system from the dropdown, then browse nearby systems in the detail panel.
-            Filters apply to that nearby list. Click a system to jump there.
+            Choose a system from the list, then browse neighbors in the detail panel. Filters shape
+            that nearby list; clicking a name jumps you there — ideally with fuel and a plan.
           </div>
         </section>
 
@@ -161,13 +164,14 @@
           <div class="panel-heading">
             <div>
               <p class="eyebrow">System Detail</p>
-              <h2 id="detail-title">Select a system</h2>
+              <h2 id="detail-title">Choose a system</h2>
             </div>
-            <span class="pill muted" id="detail-region">No region</span>
+            <span class="pill muted" id="detail-region">Nowhere yet</span>
           </div>
 
           <div id="detail-empty" class="empty-state">
-            Search for a system above to see nearby candidates, a system report, and site details.
+            Search for a system above to read the Guide's notes on nearby candidates, this system's
+            report, and the sites the map admits to.
           </div>
 
           <div id="detail-content" class="detail-content" hidden>
@@ -179,6 +183,7 @@
             <div id="nearby-systems" class="nearby-systems" aria-live="polite"></div>
             <div id="system-report" class="system-report"></div>
             <h3 class="site-list-heading">All sites in this system</h3>
+            <div id="site-list-notes" class="site-list-notes" hidden></div>
             <div id="site-list" class="site-list"></div>
           </div>
         </section>

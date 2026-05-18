@@ -1,11 +1,13 @@
 const DB_URL = "./data/frontier.sqlite";
 const ORE_REFERENCE_URL = "./data/ore_reference.json";
+const ECOSYSTEMS_CURATED_URL = "./data/ecosystems_curated.json";
 const SQL_WASM = "https://cdn.jsdelivr.net/npm/sql.js@1.12.0/dist/";
 const MAX_CANDIDATE_RADIUS_LY = 10000;
 const COMET_ECOSYSTEMS = new Set([8, 9, 10]);
 const METERS_PER_LIGHT_YEAR = 9.4607304725808e15;
 
 let oreReference = null;
+let ecosystemsCurated = null;
 
 const LIKELIHOOD_TIER = {
   LOW: { label: "Low", score: 0.2 },
@@ -17,19 +19,19 @@ const SITE_TAXONOMY = [
     keywords: ["Blue Drift"],
     category: "Outer Belt Site Type",
     classification: "Dangerous / Combat Resource",
-    activity: "Scan and mine after clearing the hostile site variant.",
-    yield: "Outer-belt resource site in extracted data; Blue Drift is the combat-heavy variant.",
+    activity: "Clear the hostile variant, then mine what remains.",
+    yield: "The combat-heavy branch of the outer-belt family — bring shields and low expectations.",
     description:
-      "An outer-belt ecosystem type from extracted map data. Treat Blue Drift as the combat-heavy version of the Shale/Grove/Blue Drift family.",
+      "Blue Drift is the outer-belt site type that remembered to bring guns. The Guide classifies it as Shale/Grove's less sociable sibling.",
   },
   {
     keywords: ["Shale", "Grove"],
     category: "Outer Belt Site Type",
     classification: "Industrial / Resource",
-    activity: "Scan and mine in cold outer-ring belt environments.",
-    yield: "Outer-belt resource site in extracted data.",
+    activity: "Mine and salvage in the long chill of the outer ring.",
+    yield: "Named outer-belt prospects in the extract — not a guarantee of what your hold will contain.",
     description:
-      "Outer-belt Shale or Grove site types from extracted map data. Listed for scouting context; not confirmed in-game resources.",
+      "Shale and Grove mark cold-ring fuel scouting on the map. Whether the rocks cooperate is between you and your laser.",
   },
   {
     keywords: ["Drone Nest", "Osa Drone", "Minor Drone"],
@@ -68,10 +70,10 @@ const SITE_TAXONOMY = [
     keywords: ["Archive Wreckage", "Silo Block", "Unmoored Silo"],
     category: "Exploration & Hackable Data Vaults",
     classification: "Scavenging / Logic Hack",
-    activity: "Specialized data extraction, scanning, and container unlocking.",
+    activity: "Specialized data extraction, cracking containers, and looting vaults.",
     yield: "Encrypted data drives, blueprint copies, and utility software strings.",
     description:
-      "Drifting data vaults and storage silos uncoupled from lost orbital platforms. Requires scanning arrays to secure without triggering system self-destruct loops.",
+      "Drifting data vaults and storage silos uncoupled from lost orbital platforms. Approach carefully — some still object to being opened.",
   },
   {
     keywords: ["Ferris", "Ferris Asteroid Field"],
@@ -99,15 +101,6 @@ const SITE_TAXONOMY = [
     yield: "Pre-processed ore packets, scrap metal, and baseline industrial machinery.",
     description:
       "A defunct, unanchored mining station slowly tearing apart under local planetary gravity. Offers immediate salvage opportunities for passing industrial ships.",
-  },
-  {
-    keywords: ["Rift", "Rift 0633", "Rift 0020"],
-    category: "Industrial Space Anomaly",
-    classification: "Advanced Industrial / Strategic",
-    activity: "Deep-space crude extraction and siphon harvesting.",
-    yield: "Crude oil / space-matter fuel inputs.",
-    description:
-      "A volatile spatial rupture weeping raw crude matter. Harvesting this site is essential for manufacturing advanced fuel required for deep warp drives and interstellar stargate jumps.",
   },
   {
     keywords: ["Shipyard", "Shipyard Ruins", "Destroyed Shipyard"],
@@ -173,6 +166,7 @@ const el = {
   detailOuterBelts: document.querySelector("#detail-outer-belts"),
   nearbySystems: document.querySelector("#nearby-systems"),
   systemReport: document.querySelector("#system-report"),
+  siteListNotes: document.querySelector("#site-list-notes"),
   siteList: document.querySelector("#site-list"),
 };
 
@@ -193,7 +187,7 @@ function formatBeltNearbySummary(row) {
   const parts = [];
   if (inner) parts.push(`${formatNumber(inner)} inner`);
   if (outer) parts.push(`${formatNumber(outer)} outer`);
-  return parts.length ? parts.join(" · ") : "no belt tags";
+  return parts.length ? parts.join(" · ") : "tags politely absent";
 }
 
 function queryRows(sql, params = {}) {
@@ -405,8 +399,8 @@ function renderFuelBeltComparison(fuelSites) {
 
   return `
     <div class="fuel-belt-compare">
-      <strong>Same belt, different reads</strong>
-      <p>Multiple outer-type sites can share one belt (e.g. Eimur: Shale + Grove on one outer belt). Compare scan rows — low venting Shale vs higher-stress Grove often matches “thin” vs “richer” comet ore finds.</p>
+      <strong>One belt, several personalities</strong>
+      <p>The map sometimes stacks Shale and Grove on the same outer belt — roommates with different thermostats. Compare what pilots report: quiet Shale beside restless Grove often means thin comet ore beside richer finds, or so the bar insists.</p>
       <ul>${notes}</ul>
     </div>
   `;
@@ -441,18 +435,17 @@ function renderFuelModelSection(sites) {
 
   return `
     <section class="report-card fuel-model-card">
-      <h3>Fuel Scan Model (explorer heuristic)</h3>
+      <h3>Fuel prospect folklore (heuristic)</h3>
       <p class="fuel-model-lede">
-        Scan % is the average of three factors (Low 0–30%, Medium 31–70%, High 71–100%):
-        thermal stress (grooves), skin depth (flaking shale), and venting (bleu drift trail).
-        <strong>Best model scan here: ${formatPercent(best.pFuel)}.</strong>
-        Based on outer-belt site type in the extract — not confirmed in-game fuel odds.
+        Prospect % averages three invented omens — grooves (thermal stress), flaking (skin depth), and venting (Drift trails) — each rated Low, Medium, or High.
+        <strong>Best reading in this system: ${formatPercent(best.pFuel)}.</strong>
+        Derived from outer-belt site names in the extract; not, the Guide stresses, a promise from the universe.
       </p>
       ${renderFuelBeltComparison(fuelSites)}
       <div class="fuel-model-legend">
-        <span><b>Grooves</b> — Grove/Blue Drift higher; bare Shale lower.</span>
-        <span><b>Skin depth</b> — Shale → high flaking; Grove/Drift → medium.</span>
-        <span><b>Venting</b> — Blue Drift hot trail → high; Shale cold → low.</span>
+        <span><b>Grooves</b> — Grove and Drift fidget; bare Shale sits still.</span>
+        <span><b>Flaking</b> — Shale sheds; Grove and Drift flake with decorum.</span>
+        <span><b>Venting</b> — Drift runs hot; Shale prefers the cold shoulder.</span>
       </div>
       <div class="fuel-table-wrap">
         <table class="fuel-model-table">
@@ -463,7 +456,7 @@ function renderFuelModelSection(sites) {
               <th>Grooves</th>
               <th>Flaking</th>
               <th>Venting</th>
-              <th>Scan %</th>
+              <th>Prospect %</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -473,10 +466,14 @@ function renderFuelModelSection(sites) {
   `;
 }
 
+function taxonomyKeywordMatches(name, keyword) {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}\\b`, "i").test(String(name || ""));
+}
+
 function taxonomyForName(name) {
-  const lowerName = String(name || "").toLowerCase();
   return SITE_TAXONOMY.find((entry) =>
-    entry.keywords.some((keyword) => lowerName.includes(keyword.toLowerCase())),
+    entry.keywords.some((keyword) => taxonomyKeywordMatches(name, keyword)),
   );
 }
 
@@ -490,6 +487,50 @@ async function loadOreReference() {
     throw new Error(`Could not load ore reference (${response.status})`);
   }
   oreReference = await response.json();
+}
+
+async function loadEcosystemsCurated() {
+  const response = await fetch(ECOSYSTEMS_CURATED_URL);
+  if (!response.ok) {
+    console.warn(`Curated ecosystem guide not loaded (${response.status})`);
+    ecosystemsCurated = null;
+    return;
+  }
+  ecosystemsCurated = await response.json();
+}
+
+function curatedEcosystemMeta(ecosystemId) {
+  return ecosystemsCurated?.ecosystems?.[String(ecosystemId)] || null;
+}
+
+function displayEcosystemName(site) {
+  const curated = curatedEcosystemMeta(site.ecosystem_id);
+  if (curated?.label_jeu) return curated.label_jeu;
+  return site.ecosystem_name || shortSiteTypeName(site, ecosystemMeta(site.ecosystem_id));
+}
+
+function renderCuratedNote(site) {
+  const curated = curatedEcosystemMeta(site.ecosystem_id);
+  if (!curated?.description_courte && !curated?.contenu_connu) return "";
+
+  const parts = [];
+  if (curated.description_courte) {
+    parts.push(`<p>${escapeHtml(curated.description_courte)}</p>`);
+  }
+  if (curated.contenu_connu) {
+    parts.push(`<small><strong>Pilots claim to find:</strong> ${escapeHtml(curated.contenu_connu)}</small>`);
+  }
+  const subtitle = curated.nom_interne
+    ? `<span class="curated-internal-name">${escapeHtml(curated.nom_interne)}</span>`
+    : "";
+
+  return `
+    <div class="curated-note">
+      <strong>Field entry</strong>
+      ${subtitle}
+      ${parts.join("")}
+    </div>
+  `;
 }
 
 function oreZoneForEcosystem(ecosystemId) {
@@ -509,11 +550,51 @@ function ecosystemMeta(ecosystemId) {
 }
 
 function oreZoneLabel(oreZone) {
-  if (oreZone === "hot") return "Near the star (hot)";
-  if (oreZone === "cold") return "Far from the star (cold)";
-  if (oreZone === "mixed") return "Mixed temperatures";
-  if (oreZone === "transitional") return "Transitional";
-  return "Unknown zone";
+  if (oreZone === "hot") return "The furnace lane (inner / hot)";
+  if (oreZone === "cold") return "The long chill (outer / cold)";
+  if (oreZone === "mixed") return "A belt of many moods";
+  if (oreZone === "transitional") return "Between the rings";
+  return "Uncharted temperament";
+}
+
+function isTrojanSite(site, meta) {
+  return site.object_type === "trojans" || meta?.ring === "trojan";
+}
+
+function trojanThermalBand(site) {
+  const tags = parseTags(site.tags_json).map((tag) => tag.toLowerCase());
+  const hasOuter = tags.includes("outer");
+  const hasInner = tags.includes("inner");
+  const hasTemperateHost = tags.some((tag) => tag === "temperate_host" || tag.includes("temperate"));
+
+  // Outer-ring trojans sit in the cold band; inner trojans near the star skew hot.
+  if (hasOuter) return "cold";
+  if (hasInner && hasTemperateHost) return "temperate";
+  if (hasInner) return "hot";
+  if (hasTemperateHost) return "temperate";
+  return "temperate";
+}
+
+function trojanOreZoneLabel(site) {
+  const band = trojanThermalBand(site);
+  if (band === "hot") return "Sun-adjacent trojan (hot)";
+  if (band === "cold") return "Outer-ring trojan (cold)";
+  return "Temperate trojan (between rings)";
+}
+
+function oreZoneLabelForSite(site, meta) {
+  if (isTrojanSite(site, meta)) return trojanOreZoneLabel(site);
+  return oreZoneLabel(meta?.oreZone);
+}
+
+function zoneForTrojanBand(band) {
+  if (band === "hot") return oreReference?.zones?.hot;
+  if (band === "cold") return oreReference?.zones?.cold;
+  return null;
+}
+
+function rumorLead() {
+  return '<span class="ore-rumor">The Guide murmurs</span>';
 }
 
 function ringLabel(site, meta) {
@@ -526,6 +607,9 @@ function ringLabel(site, meta) {
 }
 
 function shortSiteTypeName(site, meta) {
+  const curated = curatedEcosystemMeta(site.ecosystem_id);
+  if (curated?.label_jeu) return curated.label_jeu;
+  if (meta?.labelJeu) return meta.labelJeu;
   if (meta?.siteType) return meta.siteType;
   const name = site.ecosystem_name || "";
   const fromName = sourceTypeName(name);
@@ -534,98 +618,66 @@ function shortSiteTypeName(site, meta) {
   return parts.length ? parts[parts.length - 1] : name || "Unknown site";
 }
 
-function renderOreChips(zoneKey, zone) {
-  if (!zone?.ores?.length) return "";
-  const chips = zone.ores
-    .map((ore) => {
-      const note = ore.note ? ` title="${escapeHtml(ore.note)}"` : "";
-      return `<span class="ore-chip ore-chip-${zoneKey}"${note}>${escapeHtml(ore.name)}</span>`;
-    })
-    .join("");
-
-  return `
-    <div class="ore-zone-block ore-zone-${zoneKey}">
-      <h4>${escapeHtml(zone.label)}</h4>
-      <p class="ore-zone-hint">${zoneKey === "hot" ? "Typical when mining close to the star." : "Typical on outer belts and cold hosts."}</p>
-      <div class="ore-chip-row">${chips}</div>
-    </div>
-  `;
-}
-
-function summarizeSystemOreSites(sites) {
-  const byEco = new Map();
-  for (const site of sites) {
-    const key = String(site.ecosystem_id);
-    if (!byEco.has(key)) {
-      byEco.set(key, { site, count: 0 });
-    }
-    byEco.get(key).count += 1;
-  }
-  return [...byEco.values()].sort(
-    (a, b) =>
-      a.site.object_type.localeCompare(b.site.object_type) ||
-      Number(a.site.ecosystem_id) - Number(b.site.ecosystem_id),
-  );
-}
-
-function renderSystemSiteTypeCards(sites) {
-  const cards = summarizeSystemOreSites(sites)
-    .map(({ site, count }) => {
-      const meta = ecosystemMeta(site.ecosystem_id);
-      const info = oreZoneForEcosystem(site.ecosystem_id);
-      const zone = info?.zone;
-      const title = shortSiteTypeName(site, meta);
-      const ring = ringLabel(site, meta);
-      const zoneText = oreZoneLabel(meta?.oreZone);
-      const ores = formatOreList(zone);
-      const place =
-        site.object_type === "asteroidBelts" ? `Belt ${site.object_id}` : `Trojan ${site.object_id}`;
-      const countLabel = `${count} site${count === 1 ? "" : "s"} in this system`;
-
-      return `
-        <article class="site-type-card">
-          <div class="site-type-card-top">
-            <h4>${escapeHtml(title)}</h4>
-            <span class="site-type-count">${escapeHtml(countLabel)}</span>
-          </div>
-          <p class="site-type-meta">${escapeHtml([ring, zoneText, place].filter(Boolean).join(" · "))}</p>
-          ${
-            ores
-              ? `<p class="site-type-ores"><span>Look for</span> ${escapeHtml(ores)}</p>`
-              : `<p class="site-type-ores muted">Rock mix varies — scan in game.</p>`
-          }
-        </article>
-      `;
-    })
-    .join("");
-
-  if (!cards) return "";
-
-  return `<div class="site-type-cards">${cards}</div>`;
-}
-
 function renderOreHaystackNote(sites) {
   const trojans = sites.filter((s) => s.object_type === "trojans");
   const comets = sites.filter((s) => Number(s.is_comet_candidate) === 1);
   if (!trojans.length) return "";
 
-  const outerIcy = trojans.filter((s) => {
+  const outerTrojans = trojans.filter((s) => trojanThermalBand(s) === "cold");
+  const innerTrojans = trojans.filter((s) => trojanThermalBand(s) === "hot");
+  const temperateTrojans = trojans.filter((s) => trojanThermalBand(s) === "temperate");
+
+  if (comets.length && !outerTrojans.length && !temperateTrojans.length) return "";
+
+  const outerIcy = outerTrojans.filter((s) => {
     const tags = parseTags(s.tags_json).map((t) => t.toLowerCase());
-    return tags.includes("outer") && tags.some((t) => t.includes("icy") || t.includes("ice"));
+    return tags.some((t) => t.includes("icy") || t.includes("ice"));
   });
 
-  if (comets.length && !outerIcy.length) return "";
+  let rumor = "";
+  if (outerTrojans.length && innerTrojans.length && temperateTrojans.length) {
+    rumor =
+      "A full trojan menagerie: sun-hugging points run hot, outer hosts run cold, and temperate tags between the rings are where bar stories about mixed rocks actually begin.";
+  } else if (temperateTrojans.length) {
+    rumor = `${temperateTrojans.length} temperate trojan${temperateTrojans.length === 1 ? "" : "s"} sit in the in-between — the Guide has heard of both hot and cold finds, which is not the same as proof.`;
+  } else if (outerTrojans.length && !innerTrojans.length) {
+    rumor = "Outer-ring hosts favor the cold family; expecting Char by the star here would be optimistic.";
+  } else if (innerTrojans.length && !outerTrojans.length) {
+    rumor = "Inner tags hug the furnace; comet-style cold ore would be a surprise — not impossible, merely rude.";
+  } else {
+    rumor = "Read the tags: inner leans hot, outer leans cold, temperate hosts occupy the diplomatic middle.";
+  }
 
   return `
     <div class="ore-haystack-note">
-      <strong>Trojan haystack scouting</strong>
+      <strong>Trojan haystacks (bar-stool chapter)</strong>
       <p>
-        ${trojans.length} trojan point${trojans.length === 1 ? "" : "s"} here
-        ${comets.length ? ", plus labeled outer Shale/Grove/Drift sites." : ", but no labeled outer fuel sites on the map."}
-        ${outerIcy.length ? ` ${outerIcy.length} outer trojan${outerIcy.length === 1 ? "" : "s"} sit on icy hosts — good place to scan for cold rocks.` : " Pilots report mixed hot and cold asteroids at trojans even when the map only shows Garden or Annex."}
+        ${trojans.length} trojan point${trojans.length === 1 ? "" : "s"} in this system
+        ${comets.length ? ", plus Shale, Grove, or Drift names on the map." : ", though the map declines to name outer fuel sites."}
+        ${outerIcy.length ? ` ${outerIcy.length} outer trojan${outerIcy.length === 1 ? "" : "s"} wear icy hosts — cold ore is the gossip there.` : ""}
+        <em>${rumor}</em>
       </p>
     </div>
   `;
+}
+
+function trojanOreZoneBody(site) {
+  const band = trojanThermalBand(site);
+  const tags = parseTags(site.tags_json).map((tag) => tag.toLowerCase());
+  const icyHost = tags.some((tag) => tag.includes("icy") || tag.includes("ice"));
+
+  if (band === "hot") {
+    const hot = formatOreList(oreReference?.zones?.hot);
+    return `${rumorLead()} this point carries an <b>inner</b> tag and therefore lives uncomfortably close to the star. <b>${escapeHtml(hot || "Char, Slag, Ingot")}</b> are the polite expectation; cold comet ore would need a very good excuse.`;
+  }
+
+  if (band === "cold") {
+    const cold = formatOreList(oreReference?.zones?.cold);
+    const icyNote = icyHost ? " The map also marks an icy host — the Guide approves of consistency." : "";
+    return `${rumorLead()} this trojan rides an <b>outer-ring</b> host where the long chill rules. <b>${escapeHtml(cold || "Comet, Dewdrop, Soot, Glint, Ember")}</b> are the likely choir; inner-belt heat should not be counted on.${escapeHtml(icyNote)}`;
+  }
+
+  return `${rumorLead()} a <b>temperate-host</b> tag places this rock in the diplomatic belt — beyond the furnace, short of the outer dark. Bar pilots insist both hot and cold asteroids may turn up; the Guide recommends mining many rocks until something interesting appears.`;
 }
 
 function renderOreZoneNote(site) {
@@ -633,18 +685,23 @@ function renderOreZoneNote(site) {
   if (!info) return "";
 
   const { meta, zone } = info;
-  const ores = formatOreList(zone);
-  const zoneLabel = oreZoneLabel(meta.oreZone);
   const title = shortSiteTypeName(site, meta);
   const ring = ringLabel(site, meta);
+  const zoneLabel = oreZoneLabelForSite(site, meta);
 
   let body = "";
-  if (ores) {
-    body = `Expect <b>${escapeHtml(ores)}</b> when scanning this ${escapeHtml((ring || "site").toLowerCase())}.`;
-  } else if (meta.haystack) {
-    body = "Hot and cold rock types can mix — scan many asteroids to find comet-style ore.";
+  if (isTrojanSite(site, meta) && meta.haystack) {
+    body = trojanOreZoneBody(site);
   } else {
-    body = "Rock mix varies; confirm with your scanner in game.";
+    const band = isTrojanSite(site, meta) ? trojanThermalBand(site) : null;
+    const ores = band ? formatOreList(zoneForTrojanBand(band)) : formatOreList(zone);
+    if (ores) {
+      body = `The extract suggests <b>${escapeHtml(ores)}</b> at this ${escapeHtml((ring || "site").toLowerCase())} — the belt may serve something else entirely once you arrive.`;
+    } else if (meta.haystack) {
+      body = `${rumorLead()} temperate trojans between the rings are where pilots tell stories about mixed rocks. Mine many asteroids; the Guide offers no warranty.`;
+    } else {
+      body = "The rock mix here is shy about commitments — warp in and let the asteroids speak for themselves.";
+    }
   }
 
   return `<div class="ore-zone-note">
@@ -653,29 +710,15 @@ function renderOreZoneNote(site) {
     </div>`;
 }
 
-function renderOreGuideSection(sites) {
-  if (!oreReference?.zones) return "";
-
-  return `
-    <section class="report-card ore-guide-card" id="ore-reference">
-      <h3>What rocks to expect</h3>
-      <p class="ore-guide-lede">
-        The map lists <b>site types</b> (Shale, Grove, inner quarries, trojans). Each sits in a
-        hot or cold part of the system. These are the asteroid families pilots usually mine there.
-      </p>
-
-      <div class="ore-ref-grid">
-        ${renderOreChips("hot", oreReference.zones.hot)}
-        ${renderOreChips("cold", oreReference.zones.cold)}
-      </div>
-
-      <h4 class="ore-subheading">Sites in this system</h4>
-      ${renderSystemSiteTypeCards(sites)}
-      ${renderOreHaystackNote(sites)}
-
-      <p class="ore-footnote">The extract lists site types, not every rock in a belt. Always verify with an in-game scan.</p>
-    </section>
-  `;
+function updateSiteListNotes(sites) {
+  const note = renderOreHaystackNote(sites);
+  if (!note) {
+    el.siteListNotes.innerHTML = "";
+    el.siteListNotes.hidden = true;
+    return;
+  }
+  el.siteListNotes.innerHTML = note;
+  el.siteListNotes.hidden = false;
 }
 
 function makeSystemReport(summary, sites) {
@@ -700,34 +743,34 @@ function makeSystemReport(summary, sites) {
     ? topCounts(cometSites.map((site) => sourceTypeName(site.ecosystem_name)).filter(Boolean))
         .map(([name, count]) => `${count}× ${name}`)
         .join(", ")
-    : "None in extract";
+    : "The extract names none";
 
   const combatText = combatSites.length
-    ? `${combatSites.length} Blue Drift site${combatSites.length === 1 ? "" : "s"} marked combat-heavy.`
-    : "No Blue Drift sites in extract.";
+    ? `${combatSites.length} Blue Drift marker${combatSites.length === 1 ? "" : "s"} — the disagreeable cousin of fuel scouting.`
+    : "No Blue Drift in the files — possibly peaceful, possibly undocumented.";
 
   const innerBeltText = innerBeltSites.length
-    ? `${innerBeltSites.length} inner-ring belt site${innerBeltSites.length === 1 ? "" : "s"} tagged in data.`
-    : "No inner-ring belt tags in extract.";
+    ? `${innerBeltSites.length} inner belt${innerBeltSites.length === 1 ? "" : "s"} in the furnace lane.`
+    : "No inner tags — the star's neighborhood goes unlisted.";
 
   const outerBeltText = outerBeltSites.length
-    ? `${outerBeltSites.length} outer-ring belt site${outerBeltSites.length === 1 ? "" : "s"} tagged in data.`
-    : "No outer-ring belt tags in extract.";
+    ? `${outerBeltSites.length} outer belt${outerBeltSites.length === 1 ? "" : "s"} in the long chill.`
+    : "No outer tags — the rim keeps its secrets.";
 
   const livingNote =
     innerBeltSites.length && outerBeltSites.length
-      ? `Both inner (${innerBeltSites.length}) and outer (${outerBeltSites.length}) belt sites appear in the extract.`
+      ? `This system offers both furnace-lane belts (${innerBeltSites.length}) and rimward belts (${outerBeltSites.length}) — a rare menu.`
       : innerBeltSites.length
-        ? `Inner-ring belts only (${innerBeltSites.length} tagged sites) — typical build-ore style prospects.`
+        ? `Only inner belts (${innerBeltSites.length}) — hot ore country, short on comet romance.`
         : outerBeltSites.length
-          ? `Outer-ring belts only (${outerBeltSites.length} tagged sites)${cometSites.length ? `; types: ${outerTypeText}` : ""}.`
+          ? `Only outer belts (${outerBeltSites.length})${cometSites.length ? `, with ${outerTypeText} on the manifest` : ""}.`
           : trojanSites.length >= 2 && asteroidSites.length >= 3
-            ? "Belts and trojans present, but no inner/outer ring tags in this extract."
-            : "Sparse belt tagging in this extract; verify in game before committing.";
+            ? "Belts and trojans abound, yet the map forgot to say inner or outer — verify before you commit a freighter."
+            : "Thin tagging in the extract; treat all belt gossip as provisional until you've warped in and looked.";
 
   return `
     <section class="report-card">
-      <h3>At A Glance</h3>
+      <h3>At a glance</h3>
       <p>${escapeHtml(livingNote)}</p>
       <div class="report-grid">
         <div><span>Asteroid Belts</span><strong>${formatNumber(asteroidSites.length)}</strong></div>
@@ -740,10 +783,9 @@ function makeSystemReport(summary, sites) {
     </section>
 
     ${renderFuelModelSection(sites)}
-    ${renderOreGuideSection(sites)}
 
     <section class="report-card">
-      <h3>Site Mix</h3>
+      <h3>What sorts of places</h3>
       <div class="chips">
         ${familyCounts
           .map(([family, count]) => `<span class="chip">${escapeHtml(family)}: ${count}</span>`)
@@ -754,7 +796,7 @@ function makeSystemReport(summary, sites) {
     ${
       taxonomyCounts.length
         ? `<section class="report-card">
-            <h3>Known Site Classes</h3>
+            <h3>Recognized site classes</h3>
             <div class="chips">
               ${taxonomyCounts
                 .map(([category, count]) => `<span class="chip">${escapeHtml(category)}: ${count}</span>`)
@@ -765,7 +807,7 @@ function makeSystemReport(summary, sites) {
     }
 
     <section class="report-card">
-      <h3>Environment Tags</h3>
+      <h3>Tags the map admits to</h3>
       <div class="chips">
         ${(importantTags.length ? importantTags : uniqueTags)
           .slice(0, 18)
@@ -1060,6 +1102,7 @@ function renderSystemDetail(systemId) {
   el.detailContent.hidden = false;
   el.systemReport.innerHTML = makeSystemReport(summary, sites);
   renderNearbySystems(summary);
+  updateSiteListNotes(sites);
   el.siteList.innerHTML = sites.map(renderSiteCard).join("");
 }
 
@@ -1077,7 +1120,7 @@ function renderNearbySystems(origin) {
     el.nearbySystems.innerHTML = `
       <section class="report-card nearby-card">
         <h3>Nearby Systems</h3>
-        <p class="nearby-note">No starmap coordinates are available for this system.</p>
+        <p class="nearby-note">This system has no starmap coordinates — distance is a matter of faith.</p>
       </section>
     `;
     return;
@@ -1086,7 +1129,7 @@ function renderNearbySystems(origin) {
   const rows = getRadiusFilteredRows() ?? [];
   const list = rows.length
     ? rows.map(renderNearbyRow).join("")
-    : `<div class="empty-state compact">No systems matched those filters within ${formatNumber(radius)} ly.</div>`;
+    : `<div class="empty-state compact">No systems matched your filters within ${formatNumber(radius)} ly — try a wider net or fewer demands.</div>`;
 
   el.nearbySystems.innerHTML = `
     <section class="report-card nearby-card">
@@ -1094,7 +1137,7 @@ function renderNearbySystems(origin) {
         <h3>Nearby within ${formatNumber(radius)} ly</h3>
         <span class="pill muted">${formatNumber(rows.length)} systems</span>
       </div>
-      <p class="nearby-note">Distances use starmap coordinates. Click a system to jump there.</p>
+      <p class="nearby-note">Distances follow starmap coordinates — click a name to leap there, preferably with fuel.</p>
       <div class="nearby-list">${list}</div>
     </section>
   `;
@@ -1110,9 +1153,10 @@ function renderSiteCard(site) {
   const isCombat = Number(site.is_combat_candidate) === 1;
   const type = siteTypeLabel(site.object_type);
   const meta = ecosystemMeta(site.ecosystem_id);
-  const ecosystemName = site.ecosystem_name || shortSiteTypeName(site, meta);
-  const family = ecosystemFamily(ecosystemName);
-  const taxonomy = taxonomyForName(ecosystemName);
+  const ecosystemName = displayEcosystemName(site);
+  const family = ecosystemFamily(site.ecosystem_name || ecosystemName);
+  const curatedNote = renderCuratedNote(site);
+  const taxonomy = curatedNote ? null : taxonomyForName(site.ecosystem_name || ecosystemName);
   const outerType = sourceTypeName(ecosystemName);
   const ringTags = parseTags(site.tags_json);
   const badges = [
@@ -1135,13 +1179,13 @@ function renderSiteCard(site) {
   const fuelModel = computeFuelScan(site);
   const fuelNote = fuelModel
     ? `<div class="fuel-scan-note">
-        <strong>Model scan: ${formatPercent(fuelModel.pFuel)}</strong>
+        <strong>Prospect score: ${formatPercent(fuelModel.pFuel)}</strong>
         <span>
           grooves ${formatTier(fuelModel.stressTier)} ·
           flaking ${formatTier(fuelModel.skinTier)} ·
           venting ${formatTier(fuelModel.ventingTier)}
         </span>
-        <small>${escapeHtml(fuelModel.beltLabel)} — heuristic from site type in extract.</small>
+        <small>${escapeHtml(fuelModel.beltLabel)} — folklore derived from site names, not cosmic law.</small>
       </div>`
     : "";
 
@@ -1174,6 +1218,7 @@ function renderSiteCard(site) {
       <div class="badges">${badges}</div>
       ${renderOreZoneNote(site)}
       ${fuelNote}
+      ${curatedNote}
       ${taxonomyNote}
     </article>
   `;
@@ -1181,12 +1226,14 @@ function renderSiteCard(site) {
 
 function resetDetailPanel() {
   selectedSystemId = null;
-  el.detailTitle.textContent = "Select a system";
-  el.detailRegion.textContent = "No region";
+  el.detailTitle.textContent = "Choose a system";
+  el.detailRegion.textContent = "Nowhere yet";
   el.detailEmpty.hidden = false;
   el.detailContent.hidden = true;
   el.systemReport.innerHTML = "";
   el.nearbySystems.innerHTML = "";
+  el.siteListNotes.innerHTML = "";
+  el.siteListNotes.hidden = true;
   el.siteList.innerHTML = "";
 }
 
@@ -1263,10 +1310,10 @@ function bindEvents() {
 async function boot() {
   try {
     bindEvents();
-    await Promise.all([loadDatabase(), loadOreReference()]);
+    await Promise.all([loadDatabase(), loadOreReference(), loadEcosystemsCurated()]);
     loadStats();
     loadRegions();
-    setStatus("ready", "Database ready", "Search for a system, pick it from the dropdown, then browse nearby candidates.");
+    setStatus("ready", "The index is open", "Name a system, choose it from the list, and let the Guide gossip about what waits nearby.");
   } catch (error) {
     console.error(error);
     setStatus("error", "Could not load database", error.message);
