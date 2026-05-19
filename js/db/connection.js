@@ -1,6 +1,7 @@
 import { appState } from '../core/state.js';
 import { DB_URL, SQL_WASM } from '../config/constants.js';
 import { setStatus } from '../ui/status.js';
+import { updateLoader } from '../ui/loader.js';
 export function queryRows(sql, params = {}) {
   const stmt = appState.db.prepare(sql);
   stmt.bind(params);
@@ -63,12 +64,14 @@ function getSqlJsInit() {
 
 export async function loadDatabase() {
   setStatus(null, "Loading database", "Starting SQL engine (wasm from CDN)…");
+  updateLoader("Loading database", "Starting SQL engine (wasm from CDN)…");
 
   const SQL = await getSqlJsInit()({
     locateFile: (file) => `${SQL_WASM}${file}`,
   });
 
   setStatus(null, "Loading database", `Downloading ${DB_URL}…`);
+  updateLoader("Downloading database", `Fetching ${DB_URL}…`);
 
   const response = await fetch(DB_URL);
   if (!response.ok) {
@@ -80,17 +83,19 @@ export async function loadDatabase() {
   const bytes = await readResponseWithProgress(response, (loaded, total) => {
     if (!total) return;
     const pct = Math.min(100, Math.round((loaded / total) * 100));
-    setStatus(
-      null,
-      "Loading database",
-      `Downloading frontier.sqlite… ${pct}% (${formatMegabytes(loaded)} / ${formatMegabytes(total)})`,
-    );
+    const detail = `Downloading frontier.sqlite… ${pct}% (${formatMegabytes(loaded)} / ${formatMegabytes(total)})`;
+    setStatus(null, "Loading database", detail);
+    updateLoader("Downloading database", detail);
   });
 
   setStatus(
     null,
     "Loading database",
     `Opening index${sizeHint ? ` (${sizeHint})` : ""} — first visit can take a few seconds…`,
+  );
+  updateLoader(
+    "Opening database",
+    `Parsing index${sizeHint ? ` (${sizeHint})` : ""} — first visit can take a few seconds…`,
   );
 
   appState.db = new SQL.Database(new Uint8Array(bytes));
