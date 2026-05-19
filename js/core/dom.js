@@ -12,6 +12,7 @@ export const el = {
   searchSuggestions: document.querySelector("#search-suggestions"),
   regionSelect: document.querySelector("#region-select"),
   candidateRadius: document.querySelector("#candidate-radius"),
+  candidateRadiusHint: document.querySelector("#candidate-radius-hint"),
   cometOnly: document.querySelector("#comet-only"),
   combatOnly: document.querySelector("#combat-only"),
   innerBeltOnly: document.querySelector("#inner-belt-only"),

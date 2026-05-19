@@ -130,12 +130,14 @@
               <span>Candidate radius from searched system (ly, default 100)</span>
               <input
                 id="candidate-radius"
-                type="number"
-                min="1"
-                max="10000"
-                step="1"
+                type="text"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                autocomplete="off"
                 value="100"
+                aria-describedby="candidate-radius-hint"
               />
+              <p id="candidate-radius-hint" class="field-hint" hidden></p>
             </label>
 
             <label class="toggle">
@@ -196,7 +198,7 @@
       crossorigin="anonymous"
     ></script>
     <script type="module">
-      import("./js/main.js?v=20260518-3").catch((error) => {
+      import("./js/main.js?v=20260518-4").catch((error) => {
         console.error(error);
         const title = document.querySelector("#status-title");
         const detail = document.querySelector("#status-detail");

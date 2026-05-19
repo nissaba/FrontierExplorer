@@ -3,7 +3,7 @@ import { el } from '../core/dom.js';
 import { normalizeSystemId } from '../core/ids.js';
 import { queryOne } from '../db/connection.js';
 import { getAllSystemSummaries } from '../db/systems.js';
-import { ensureRadiusInputValue } from './filters.js';
+import { updateRadiusInputValidity } from './filters.js';
 import { renderSystemDetail } from '../ui/system-detail.js';
 export function chooseOriginSystem(systemId) {
   const id = normalizeSystemId(systemId);
@@ -40,7 +40,7 @@ export function setActiveSystem(systemId) {
   el.searchSuggestions.innerHTML = '';
   el.searchInput.setAttribute('aria-expanded', 'false');
   appState.suggestionIndex = -1;
-  ensureRadiusInputValue();
+  updateRadiusInputValidity();
   renderSystemDetail(appState.originSystemId);
   queueMicrotask(() => {
     appState.suppressSearchClear = false;

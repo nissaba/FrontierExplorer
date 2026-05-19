@@ -7,7 +7,7 @@ import { queryRows, queryOne } from '../db/connection.js';
 import {
   getSearchFilterState,
   hasActiveSearchFilters,
-  ensureRadiusInputValue,
+  updateRadiusInputValidity,
   filterSitesForDisplay,
 } from '../app/filters.js';
 import { starmapPlanetMap } from '../domain/planets.js';
@@ -21,7 +21,7 @@ export function renderSystemDetail(systemId) {
   const id = normalizeSystemId(systemId);
   if (!id) return;
 
-  ensureRadiusInputValue();
+  updateRadiusInputValidity();
 
   const summary = queryOne(
     `

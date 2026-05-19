@@ -259,6 +259,23 @@ h2 {
   box-shadow: 0 0 0 4px rgba(101, 217, 255, 0.12);
 }
 
+.field input.field-invalid {
+  border-color: var(--red);
+  box-shadow: 0 0 0 4px rgba(255, 107, 122, 0.12);
+}
+
+.field-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--red);
+  line-height: 1.35;
+}
+
+.field-hint[hidden] {
+  display: none;
+}
+
 .search-field {
   position: relative;
   z-index: 4;

@@ -1,40 +1,86 @@
 import { el } from '../core/dom.js';
 import { DEFAULT_RADIUS_LY, MAX_CANDIDATE_RADIUS_LY } from '../config/constants.js';
 import { parseTags } from '../core/tags.js';
-export function readRadiusFromInput() {
-  const raw = String(el.candidateRadius?.value ?? "").trim();
-  if (!raw) return DEFAULT_RADIUS_LY;
+
+/** Parse radius field without rewriting the input (safe while typing). */
+export function parseRadiusInput(value = el.candidateRadius?.value) {
+  const raw = String(value ?? "").trim();
+  if (raw === "") {
+    return { valid: false, ly: null, message: "Enter a number greater than 0 ly." };
+  }
+  if (!/^\d+$/.test(raw)) {
+    return {
+      valid: false,
+      ly: null,
+      message: "Invalid characters — use a whole number of light-years.",
+    };
+  }
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return DEFAULT_RADIUS_LY;
-  return Math.min(MAX_CANDIDATE_RADIUS_LY, Math.max(1, Math.floor(parsed)));
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return { valid: false, ly: null, message: "Radius must be greater than 0 ly." };
+  }
+  const ly = Math.min(MAX_CANDIDATE_RADIUS_LY, Math.floor(parsed));
+  return { valid: true, ly, message: "" };
 }
 
-/** Commit default radius into the input so placeholder-only “100” still applies. */
+export function updateRadiusInputValidity() {
+  if (!el.candidateRadius) return parseRadiusInput();
 
-export function ensureRadiusInputValue() {
+  const parsed = parseRadiusInput();
+  const input = el.candidateRadius;
+  const hint = el.candidateRadiusHint;
+
+  if (parsed.valid) {
+    input.classList.remove("field-invalid");
+    input.removeAttribute("aria-invalid");
+    input.setCustomValidity("");
+    if (hint) {
+      hint.hidden = true;
+      hint.textContent = "";
+    }
+  } else {
+    input.classList.add("field-invalid");
+    input.setAttribute("aria-invalid", "true");
+    input.setCustomValidity(parsed.message);
+    if (hint) {
+      hint.hidden = false;
+      hint.textContent = parsed.message;
+    }
+  }
+
+  return parsed;
+}
+
+/** On blur: clamp valid values; restore default if still invalid. */
+export function commitRadiusInputOnBlur() {
   if (!el.candidateRadius) return DEFAULT_RADIUS_LY;
-  const ly = readRadiusFromInput();
-  el.candidateRadius.value = String(ly);
-  return ly;
-}
 
+  const parsed = parseRadiusInput();
+  if (parsed.valid) {
+    el.candidateRadius.value = String(parsed.ly);
+  } else {
+    el.candidateRadius.value = String(DEFAULT_RADIUS_LY);
+  }
+  return updateRadiusInputValidity().ly ?? DEFAULT_RADIUS_LY;
+}
 
 export function getCandidateRadiusLy() {
-  return readRadiusFromInput();
+  const parsed = parseRadiusInput();
+  return parsed.valid ? parsed.ly : null;
 }
 
-
 export function getSearchFilterState() {
+  const radius = parseRadiusInput();
   return {
     region: el.regionSelect.value,
-    radiusLy: getCandidateRadiusLy(),
+    radiusLy: radius.valid ? radius.ly : null,
+    radiusMessage: radius.message,
     cometOnly: el.cometOnly.checked,
     combatOnly: el.combatOnly.checked,
     innerBeltOnly: el.innerBeltOnly.checked,
     outerBeltOnly: el.outerBeltOnly.checked,
   };
 }
-
 
 export function systemMatchesSearchFilters(row, filters = getSearchFilterState()) {
   if (filters.region && row.region !== filters.region) return false;
@@ -44,7 +90,6 @@ export function systemMatchesSearchFilters(row, filters = getSearchFilterState()
   if (filters.outerBeltOnly && Number(row.outer_belt_site_count) <= 0) return false;
   return true;
 }
-
 
 export function hasActiveSearchFilters(filters = getSearchFilterState()) {
   return Boolean(
@@ -56,7 +101,6 @@ export function hasActiveSearchFilters(filters = getSearchFilterState()) {
   );
 }
 
-
 export function describeActiveSearchFilters(filters = getSearchFilterState()) {
   const parts = [];
   if (filters.region) parts.push(`region: ${filters.region}`);
@@ -66,7 +110,6 @@ export function describeActiveSearchFilters(filters = getSearchFilterState()) {
   if (filters.outerBeltOnly) parts.push("outer tag");
   return parts.join(" · ");
 }
-
 
 export function siteMatchesSearchFilters(site, filters = getSearchFilterState()) {
   if (filters.cometOnly && Number(site.is_comet_candidate) !== 1) return false;
@@ -78,14 +121,14 @@ export function siteMatchesSearchFilters(site, filters = getSearchFilterState())
   return true;
 }
 
-
 export function filterSitesForDisplay(sites, filters = getSearchFilterState()) {
   if (!hasActiveSearchFilters(filters)) return sites;
   return sites.filter((site) => siteMatchesSearchFilters(site, filters));
 }
 
-
 export function initFilterDefaults() {
-  ensureRadiusInputValue();
+  if (el.candidateRadius && !String(el.candidateRadius.value).trim()) {
+    el.candidateRadius.value = String(DEFAULT_RADIUS_LY);
+  }
+  updateRadiusInputValidity();
 }
-

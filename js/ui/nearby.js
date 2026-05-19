@@ -25,6 +25,17 @@ export function renderNearbyRow(row) {
 
 export function renderNearbySystems(origin) {
   const filters = getSearchFilterState();
+
+  if (filters.radiusLy == null) {
+    el.nearbySystems.innerHTML = `
+      <section class="report-card nearby-card">
+        <h3>Nearby Systems</h3>
+        <p class="nearby-note field-hint-visible">${escapeHtml(filters.radiusMessage || "Enter a radius greater than 0 ly.")}</p>
+      </section>
+    `;
+    return;
+  }
+
   const radius = filters.radiusLy;
 
   if (!origin.center_x && Number(origin.center_x) !== 0) {

@@ -106,6 +106,7 @@ export function getRadiusFilteredRows(originOverride) {
   }
 
   const filterState = filters.getSearchFilterState();
+  if (filterState.radiusLy == null) return null;
 
   return getAllSystemSummaries()
     .filter((row) => Number(row.system_id) !== Number(origin.system_id))

@@ -12,7 +12,11 @@ import {
   clearOriginSystem,
   refreshActiveSystem,
 } from './session.js';
-import { ensureRadiusInputValue, initFilterDefaults } from './filters.js';
+import {
+  commitRadiusInputOnBlur,
+  initFilterDefaults,
+  updateRadiusInputValidity,
+} from './filters.js';
 import { resetDetailPanel } from '../ui/system-detail.js';
 export function bindEvents() {
   el.searchInput.addEventListener("input", onSearchInput);
@@ -54,10 +58,16 @@ export function bindEvents() {
   });
 
   el.regionSelect.addEventListener("change", refreshActiveSystem);
-  el.candidateRadius.addEventListener("input", refreshActiveSystem);
-  el.candidateRadius.addEventListener("change", refreshActiveSystem);
+
+  function onRadiusInput() {
+    const parsed = updateRadiusInputValidity();
+    if (parsed.valid) refreshActiveSystem();
+  }
+
+  el.candidateRadius.addEventListener("input", onRadiusInput);
+  el.candidateRadius.addEventListener("change", onRadiusInput);
   el.candidateRadius.addEventListener("blur", () => {
-    ensureRadiusInputValue();
+    commitRadiusInputOnBlur();
     refreshActiveSystem();
   });
   el.cometOnly.addEventListener("change", refreshActiveSystem);
