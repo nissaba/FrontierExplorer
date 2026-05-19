@@ -1,6 +1,6 @@
 # EVE Frontier System Explorer
 
-**Live site:** [https://fontier-explorer.netlify.app/](https://fontier-explorer.netlify.app/)
+**Live site:** [https://nissaba.github.io/FrontierExplorer/](https://nissaba.github.io/FrontierExplorer/)
 
 An unofficial fan index for the Frontier: search a system by name or ID and see what the extracted map data claims is there — belt sites, trojans, planets, and neighbors within a chosen radius.
 
