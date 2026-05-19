@@ -6,18 +6,18 @@ import { parseTags } from '../core/tags.js';
 export function parseRadiusInput(value = el.candidateRadius?.value) {
   const raw = String(value ?? "").trim();
   if (raw === "") {
-    return { valid: false, ly: null, message: "Enter a number greater than 0 ly." };
+    return { valid: false, ly: DEFAULT_RADIUS_LY, message: "Enter a number greater than 0 ly." };
   }
   if (!/^\d+$/.test(raw)) {
     return {
       valid: false,
-      ly: null,
+      ly: DEFAULT_RADIUS_LY,
       message: "Invalid characters — use a whole number of light-years.",
     };
   }
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    return { valid: false, ly: null, message: "Radius must be greater than 0 ly." };
+    return { valid: false, ly: DEFAULT_RADIUS_LY, message: "Radius must be greater than 0 ly." };
   }
   const ly = Math.min(MAX_CANDIDATE_RADIUS_LY, Math.floor(parsed));
   return { valid: true, ly, message: "" };
@@ -66,14 +66,14 @@ export function commitRadiusInputOnBlur() {
 
 export function getCandidateRadiusLy() {
   const parsed = parseRadiusInput();
-  return parsed.valid ? parsed.ly : null;
+  return parsed.ly;
 }
 
 export function getSearchFilterState() {
   const radius = parseRadiusInput();
   return {
     region: el.regionSelect.value,
-    radiusLy: radius.valid ? radius.ly : null,
+    radiusLy: radius.ly,
     radiusMessage: radius.message,
     cometOnly: el.cometOnly.checked,
     combatOnly: el.combatOnly.checked,
